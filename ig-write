@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""ig-write — write-enabled companion to ig-agent (official Graph API only).
+
+Reuses ig-agent's stored long-lived token (no new login), stdlib only.
+
+  ig-write post --image-url https://.../pic.jpg --caption "hello"
+  ig-write reel --video-url https://.../clip.mp4 --caption "hi" --cover-url https://.../cover.jpg
+  ig-write story --image-url https://.../pic.jpg
+  ig-write story --video-url https://.../clip.mp4
+  ig-write carousel --children CID1,CID2 --caption "swipe"
+  ig-write publish --creation-id <container_id>
+  ig-write status --container-id <container_id>
+  ig-write delete --media-id <media_id>
+  ig-write like --media-id <id> | --comment-id <id>
+  ig-write unlike --media-id <id> | --comment-id <id>
+  ig-write me
+
+Official scope map (Instagram Login):
+  post/reel/carousel/story -> instagram_business_content_publish
+  like/unlike              -> instagram_manage_engagement (Apr 2026, may need
+                              Facebook-Login path; error will say so)
+  delete                   -> instagram_manage_contents (Dec 2025)
+  Notes                    -> NO official API (skipped on purpose)
+
+Flow: create container -> poll status_code=FINISHED -> media_publish.
+By default post/reel/story/carousel do all three; pass --container-only
+to stop after step 1.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.parse
+import urllib.request
+
+VERSION = "0.1.0"
+DEFAULT_API_VERSION = "v26.0"
+DEFAULT_BASE = "https://graph.instagram.com"
+
+SCOPE_HINTS = {
+    "content_publish": "instagram_business_content_publish",
+    "engagement": "instagram_manage_engagement",
+    "delete": "instagram_manage_contents",
+}
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def default_config_paths():
+    paths = []
+    env = os.environ.get("IG_AGENT_CONFIG")
+    if env:
+        paths.append(os.path.expanduser(env))
+    # macOS (env-paths): ~/Library/Preferences/ig-agent/config.json
+    paths.append(os.path.expanduser("~/Library/Preferences/ig-agent/config.json"))
+    xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+    paths.append(os.path.join(xdg, "ig-agent", "config.json"))
+    return paths
+
+
+def load_account(config_path=None, account=None, token=None):
+    if token or os.environ.get("IG_ACCESS_TOKEN"):
+        tok = token or os.environ["IG_ACCESS_TOKEN"]
+        ig_id = account or os.environ.get("IG_USER_ID")
+        if not ig_id:
+            raise SystemExit(
+                "ERROR: --token/IG_ACCESS_TOKEN given but no account id. "
+                "Pass --account <ig_user_id> or set IG_USER_ID."
+            )
+        return {"ig_user_id": ig_id, "user_access_token": tok, "username": None}
+    cfg = config_path
+    if not cfg:
+        for p in default_config_paths():
+            if os.path.exists(p):
+                cfg = p
+                break
+    if not cfg or not os.path.exists(cfg):
+        raise SystemExit(
+            "ERROR: no token. ig-agent config not found at:\n  "
+            + "\n  ".join(default_config_paths())
+            + "\nRun `ig-agent auth login` first, or pass --token/IG_ACCESS_TOKEN."
+        )
+    with open(cfg) as f:
+        data = json.load(f)
+    accounts = data.get("accounts", [])
+    if not accounts:
+        raise SystemExit(f"ERROR: no accounts in {cfg}. Run `ig-agent auth login`.")
+    if account:
+        for a in accounts:
+            if a.get("ig_user_id") == account or a.get("username") == account:
+                return a
+        raise SystemExit(f"ERROR: account '{account}' not in {cfg}.")
+    active = data.get("active_account_id")
+    for a in accounts:
+        if a.get("ig_user_id") == active:
+            return a
+    return accounts[0]
+
+
+def api_call(method, path, params, base, version, timeout=60):
+    url = f"{base}/{version}/{path.lstrip('/')}"
+    data = None
+    headers = {"Accept": "application/json"}
+    if method in ("POST", "DELETE") and params:
+        data = urllib.parse.urlencode(params).encode()
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    elif method == "GET" and params:
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read().decode("utf-8", "replace")
+            return json.loads(body) if body else {}
+    except urllib.error.HTTPError as e:
+        try:
+            body = e.read().decode("utf-8", "replace")
+            err = json.loads(body)
+        except Exception:
+            err = {"error": {"message": body if "body" in dir() else str(e)}}
+        err["_http_status"] = e.code
+        raise WriteError(err)
+
+
+class WriteError(Exception):
+    def __init__(self, payload):
+        self.payload = payload
+        super().__init__(json.dumps(payload)[:500])
+
+
+def friendly_error(payload):
+    err = payload.get("error", {}) if isinstance(payload, dict) else {}
+    msg = err.get("message", json.dumps(payload)[:500])
+    code = err.get("code")
+    sub = err.get("error_subcode")
+    hint = ""
+    m = msg.lower()
+    if "permission" in m or "scope" in m or "authorized" in m or code in (200, 190):
+        if "publish" in m or "content" in m:
+            hint = f" (need scope {SCOPE_HINTS['content_publish']} — re-auth with it)"
+        elif "like" in m or "engagement" in m:
+            hint = f" (need scope {SCOPE_HINTS['engagement']} — Apr 2026 Like API, may need Facebook-Login path)"
+        elif "delete" in m or "manage" in m:
+            hint = f" (need scope {SCOPE_HINTS['delete']} — Dec 2025 Delete API)"
+        else:
+            hint = " (likely missing scope — check granted_scopes via `ig-agent auth status`)"
+    if sub:
+        hint += f" [subcode={sub}]"
+    return f"ERROR {code or payload.get('_http_status', '')}: {msg}{hint}"
+
+
+def emit(obj, pretty):
+    if pretty:
+        print(json.dumps(obj, indent=2, ensure_ascii=False))
+    else:
+        print(json.dumps(obj, ensure_ascii=False))
+
+
+def create_container(acct, base, version, timeout, **fields):
+    params = {"access_token": acct["user_access_token"]}
+    params.update({k: v for k, v in fields.items() if v is not None})
+    try:
+        res = api_call("POST", f"{acct['ig_user_id']}/media", params, base, version, timeout)
+    except WriteError as e:
+        raise SystemExit(friendly_error(e.payload))
+    if "id" not in res:
+        raise SystemExit(f"ERROR: no container id returned: {res}")
+    return res["id"]
+
+
+def poll_container(acct, base, version, cid, timeout_total=300, interval=5, quiet=False):
+    start = time.time()
+    last = None
+    while True:
+        try:
+            res = api_call(
+                "GET",
+                str(cid),
+                {"fields": "status_code,status", "access_token": acct["user_access_token"]},
+                base, version, 30,
+            )
+        except WriteError as e:
+            raise SystemExit(friendly_error(e.payload))
+        code = res.get("status_code", last)
+        if not quiet:
+            log(f"[{time.time()-start:6.1f}s] container {cid} status={code}")
+        if code == "FINISHED":
+            return res
+        if code in ("ERROR", "EXPIRED"):
+            raise SystemExit(f"ERROR: container {cid} failed: {res}")
+        if time.time() - start > timeout_total:
+            raise SystemExit(f"ERROR: timed out waiting for container {cid} (last={code})")
+        last = code
+        time.sleep(interval)
+
+
+def publish_container(acct, base, version, cid, timeout=60):
+    try:
+        return api_call(
+            "POST",
+            f"{acct['ig_user_id']}/media_publish",
+            {"creation_id": cid, "access_token": acct["user_access_token"]},
+            base, version, timeout,
+        )
+    except WriteError as e:
+        raise SystemExit(friendly_error(e.payload))
+
+
+def do_create_publish(args, acct, base, version, fields, kind):
+    cid = create_container(acct, base, version, args.timeout, **fields)
+    log(f"container {kind}: {cid}")
+    if args.container_only:
+        emit({"ok": True, "mode": f"{kind}/container", "container_id": cid}, args.pretty)
+        return
+    if kind in ("reel", "carousel", "story-video"):
+        poll_container(acct, base, version, cid, args.poll_timeout, args.poll_interval, args.quiet)
+    else:
+        # photos usually FINISHED instantly; one quick check, don't hard-fail
+        try:
+            poll_container(acct, base, version, cid, 30, 5, args.quiet)
+        except SystemExit as e:
+            log(f"warn: status check skipped: {e}")
+    res = publish_container(acct, base, version, cid, args.timeout)
+    mid = res.get("id")
+    log(f"published {kind}: media_id={mid}")
+    emit({"ok": True, "mode": kind, "container_id": cid, "media_id": mid}, args.pretty)
+
+
+def add_common(p):
+    p.add_argument("--config", default=None, help="Path to ig-agent config.json")
+    p.add_argument("--account", default=None, help="ig_user_id or username (default: active)")
+    p.add_argument("--token", default=None, help="Access token override (prefer IG_ACCESS_TOKEN env)")
+    p.add_argument("--api-base", default=DEFAULT_BASE)
+    p.add_argument("--api-version", default=DEFAULT_API_VERSION)
+    p.add_argument("--timeout", type=int, default=60)
+    p.add_argument("--pretty", action="store_true")
+    p.add_argument("--quiet", action="store_true")
+    return p
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="ig-write", description="Write companion to ig-agent (official API only).")
+    ap.add_argument("-V", "--version", action="version", version=f"%(prog)s {VERSION}")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("post", help="Publish a feed photo")
+    p = add_common(p)
+    p.add_argument("--image-url", required=True)
+    p.add_argument("--caption", default=None)
+    p.add_argument("--location-id", default=None)
+    p.add_argument("--alt-text", default=None)
+    p.add_argument("--collaborators", default=None, help="comma-separated usernames (max 3)")
+    p.add_argument("--container-only", action="store_true")
+    p.add_argument("--poll-timeout", type=int, default=30)
+    p.add_argument("--poll-interval", type=int, default=5)
+
+    p = sub.add_parser("reel", help="Publish a reel")
+    p = add_common(p)
+    p.add_argument("--video-url", required=True)
+    p.add_argument("--caption", default=None)
+    p.add_argument("--cover-url", default=None)
+    p.add_argument("--thumb-offset", default=None, help="ms into video for cover")
+    p.add_argument("--share-to-feed", default=None, help="true/false")
+    p.add_argument("--container-only", action="store_true")
+    p.add_argument("--poll-timeout", type=int, default=300)
+    p.add_argument("--poll-interval", type=int, default=5)
+
+    p = sub.add_parser("carousel-item", help="Create one carousel child container (returns id)")
+    p = add_common(p)
+    p.add_argument("--image-url", default=None)
+    p.add_argument("--video-url", default=None)
+    p.add_argument("--caption", default=None)
+
+    p = sub.add_parser("carousel", help="Publish a carousel from child container ids")
+    p = add_common(p)
+    p.add_argument("--children", required=True, help="comma-separated container ids")
+    p.add_argument("--caption", default=None)
+    p.add_argument("--location-id", default=None)
+    p.add_argument("--container-only", action="store_true")
+    p.add_argument("--poll-timeout", type=int, default=300)
+    p.add_argument("--poll-interval", type=int, default=5)
+
+    p = sub.add_parser("story", help="Publish a story (image or video)")
+    p = add_common(p)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--image-url", default=None)
+    g.add_argument("--video-url", default=None)
+    p.add_argument("--container-only", action="store_true")
+    p.add_argument("--poll-timeout", type=int, default=300)
+    p.add_argument("--poll-interval", type=int, default=5)
+
+    p = sub.add_parser("publish", help="Publish an existing container id")
+    p = add_common(p)
+    p.add_argument("--creation-id", required=True)
+
+    p = sub.add_parser("status", help="Check container status_code")
+    p = add_common(p)
+    p.add_argument("--container-id", required=True)
+
+    p = sub.add_parser("delete", help="Delete a media object (needs instagram_manage_contents)")
+    p = add_common(p)
+    p.add_argument("--media-id", required=True)
+
+    p = sub.add_parser("like", help="Like a media/comment (needs instagram_manage_engagement)")
+    p = add_common(p)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--media-id", default=None)
+    g.add_argument("--comment-id", default=None)
+
+    p = sub.add_parser("unlike", help="Unlike a media/comment")
+    p = add_common(p)
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--media-id", default=None)
+    g.add_argument("--comment-id", default=None)
+
+    p = sub.add_parser("me", help="Show active account (token sanity check)")
+    p = add_common(p)
+
+    args = ap.parse_args(argv)
+    acct = load_account(args.config, args.account, args.token)
+    base, version = args.api_base, args.api_version
+
+    if args.cmd == "me":
+        try:
+            res = api_call("GET", "me",
+                           {"fields": "id,username,account_type",
+                            "access_token": acct["user_access_token"]},
+                           base, version, args.timeout)
+        except WriteError as e:
+            raise SystemExit(friendly_error(e.payload))
+        emit({"ok": True, "account": res}, args.pretty)
+        return
+
+    if args.cmd == "post":
+        do_create_publish(args, acct, base, version, {
+            "image_url": args.image_url, "caption": args.caption,
+            "location_id": args.location_id, "alt_text": args.alt_text,
+            "collaborators": args.collaborators,
+        }, "post")
+    elif args.cmd == "reel":
+        do_create_publish(args, acct, base, version, {
+            "media_type": "REELS", "video_url": args.video_url,
+            "caption": args.caption, "cover_url": args.cover_url,
+            "thumb_offset": args.thumb_offset, "share_to_feed": args.share_to_feed,
+        }, "reel")
+    elif args.cmd == "carousel-item":
+        if not args.image_url and not args.video_url:
+            raise SystemExit("ERROR: pass --image-url or --video-url")
+        fields = {"is_carousel_item": "true"}
+        if args.image_url:
+            fields["image_url"] = args.image_url
+        else:
+            fields["video_url"] = args.video_url
+            fields["media_type"] = "REELS"
+        cid = create_container(acct, base, version, args.timeout, **fields)
+        emit({"ok": True, "mode": "carousel-item", "container_id": cid}, args.pretty)
+    elif args.cmd == "carousel":
+        do_create_publish(args, acct, base, version, {
+            "media_type": "CAROUSEL", "children": args.children,
+            "caption": args.caption, "location_id": args.location_id,
+        }, "carousel")
+    elif args.cmd == "story":
+        if args.image_url:
+            do_create_publish(args, acct, base, version, {
+                "media_type": "STORIES", "image_url": args.image_url,
+            }, "story")
+        else:
+            do_create_publish(args, acct, base, version, {
+                "media_type": "STORIES", "video_url": args.video_url,
+            }, "story-video")
+    elif args.cmd == "publish":
+        res = publish_container(acct, base, version, args.creation_id, args.timeout)
+        emit({"ok": True, "mode": "publish", "media_id": res.get("id")}, args.pretty)
+    elif args.cmd == "status":
+        try:
+            res = api_call("GET", str(args.container_id),
+                           {"fields": "status_code,status",
+                            "access_token": acct["user_access_token"]},
+                           base, version, args.timeout)
+        except WriteError as e:
+            raise SystemExit(friendly_error(e.payload))
+        emit({"ok": True, "container_id": args.container_id, **res}, args.pretty)
+    elif args.cmd == "delete":
+        try:
+            res = api_call("DELETE", str(args.media_id),
+                           {"access_token": acct["user_access_token"]},
+                           base, version, args.timeout)
+        except WriteError as e:
+            raise SystemExit(friendly_error(e.payload))
+        emit({"ok": True, "mode": "delete", "media_id": args.media_id,
+              "result": res}, args.pretty)
+    elif args.cmd in ("like", "unlike"):
+        target = {"media_id": args.media_id} if args.media_id else {"comment_id": args.comment_id}
+        method = "POST" if args.cmd == "like" else "DELETE"
+        params = dict(target)
+        params["access_token"] = acct["user_access_token"]
+        try:
+            res = api_call(method, f"{acct['ig_user_id']}/likes", params, base, version, args.timeout)
+        except WriteError as e:
+            raise SystemExit(friendly_error(e.payload)
+                             + "\nNOTE: Like API (Apr 2026) needs instagram_manage_engagement; "
+                               "if 400/unsupported, your token path (Instagram Login) may not "
+                               "have it — re-auth with that scope or use Facebook-Login app.")
+        emit({"ok": True, "mode": args.cmd, **target, "result": res}, args.pretty)
+
+
+if __name__ == "__main__":
+    main()
