@@ -30,7 +30,23 @@ Two entry points, one logic core:
 | delete | `instagram_manage_contents` (Dec 2025 Delete API) |
 
 `ig-write me` + `ig-write <cmd>` surface a clear re-auth hint when a scope is missing.
-**Notes has no official Meta API** and is intentionally not included.
+Like/delete/unlike fail **fast without an API call** when ig-agent's recorded
+grant lacks the scope. **Notes has no official Meta API** and is intentionally
+not included.
+
+## Known limitations (Instagram Login path)
+
+- `instagram_manage_engagement` (like) and `instagram_manage_contents`
+  (delete) were observed **not granted** via Instagram Login OAuth (Apr/Dec 2026
+  APIs) — Meta's docs place Like under the Facebook-Login app path, and Delete
+  may need one too and/or app review. The tool tells you this instead of a raw
+  `subcode=33`.
+- Stories: no stickers/polls/links/music via API; expire after 24 h.
+- Reels: original audio only; `media_type` reads back as `VIDEO`
+  (`media_product_type` says `REEL`/`STORY`).
+- Media must be a **public https URL** — Meta cURLs it. Local files need
+  hosting first (e.g. `catbox.moe`). Story images: JPEG, 9:16 (1080×1920) best.
+- No scheduling, no caption edit after publish, no Notes/Likes-bulk endpoints.
 
 ## CLI usage
 
@@ -83,10 +99,21 @@ The token is read from your local ig-agent config — no extra login.
 Instagram_agent_mcp/
 ├── ig-write           # CLI (stdlib only, executable)
 ├── ig-mcp-server.py   # MCP server (needs: pip install mcp)
+├── test_ig_write.py   # stdlib unit tests (no network)
 ├── requirements.txt
 ├── README.md
 └── LICENSE
 ```
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `stored token expired` | `ig-agent auth refresh` (or login again) |
+| `authorised without "instagram_manage_…"` | Re-auth with that scope; see Known limitations |
+| `container … ERROR/EXPIRED` | Media URL not fetchable or wrong spec — check public URL + format |
+| `timed out waiting for container` | Large video still processing — rerun `status`, then `publish` |
+| MCP `Connection closed` on start | `pip install -r requirements.txt` (needs `mcp` v1 or v2) |
 
 ## Disclaimer
 

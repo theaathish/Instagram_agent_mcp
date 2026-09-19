@@ -45,7 +45,9 @@ mcp = FastMCP("ig-write")
 
 
 def _acct(account: str | None = None):
-    return igw.load_account(None, account, None)
+    acct = igw.load_account(None, account, None)
+    igw.check_token_freshness(acct)
+    return acct
 
 
 def _ok(**kw):
@@ -194,6 +196,7 @@ def ig_delete(media_id: str, account: str | None = None) -> str:
     """Delete a post/reel/story. Needs instagram_manage_contents scope."""
     try:
         acct = _acct(account)
+        igw.require_scope(acct, igw.SCOPE_HINTS["delete"])
         res = igw.api_call("DELETE", str(media_id),
                            {"access_token": acct["user_access_token"]},
                            igw.DEFAULT_BASE, igw.DEFAULT_API_VERSION, 60)
@@ -210,6 +213,7 @@ def ig_like(media_id: str | None = None, comment_id: str | None = None,
         if bool(media_id) == bool(comment_id):
             return _fail(ValueError("pass exactly one of media_id / comment_id"))
         acct = _acct(account)
+        igw.require_scope(acct, igw.SCOPE_HINTS["engagement"])
         target = {"media_id": media_id} if media_id else {"comment_id": comment_id}
         params = dict(target)
         params["access_token"] = acct["user_access_token"]
@@ -228,6 +232,7 @@ def ig_unlike(media_id: str | None = None, comment_id: str | None = None,
         if bool(media_id) == bool(comment_id):
             return _fail(ValueError("pass exactly one of media_id / comment_id"))
         acct = _acct(account)
+        igw.require_scope(acct, igw.SCOPE_HINTS["engagement"])
         target = {"media_id": media_id} if media_id else {"comment_id": comment_id}
         params = dict(target)
         params["access_token"] = acct["user_access_token"]

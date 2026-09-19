@@ -17,9 +17,10 @@ Reuses ig-agent's stored long-lived token (no new login), stdlib only.
 
 Official scope map (Instagram Login):
   post/reel/carousel/story -> instagram_business_content_publish
-  like/unlike              -> instagram_manage_engagement (Apr 2026, may need
-                              Facebook-Login path; error will say so)
-  delete                   -> instagram_manage_contents (Dec 2025)
+  like/unlike              -> instagram_manage_engagement (Apr 2026; observed
+                              NOT granted on Instagram Login — likely needs the
+                              Facebook-Login app path; the tool fails fast)
+  delete                   -> instagram_manage_contents (Dec 2025; same caveat)
   Notes                    -> NO official API (skipped on purpose)
 
 Flow: create container -> poll status_code=FINISHED -> media_publish.
@@ -34,7 +35,7 @@ import time
 import urllib.parse
 import urllib.request
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DEFAULT_API_VERSION = "v26.0"
 DEFAULT_BASE = "https://graph.instagram.com"
 
@@ -98,6 +99,40 @@ def load_account(config_path=None, account=None, token=None):
         if a.get("ig_user_id") == active:
             return a
     return accounts[0]
+
+
+def check_token_freshness(acct):
+    """Warn when the stored long-lived token is expired or nearly expired."""
+    exp = acct.get("token_expires_at")
+    if not exp:
+        return  # token passed via env: no metadata to check
+    now = time.time()
+    if exp <= now:
+        raise SystemExit(
+            "ERROR: stored token expired. Run `ig-agent auth refresh` "
+            "(or `ig-agent auth login` again) and retry."
+        )
+    days = (exp - now) / 86400
+    if days < 7:
+        log(f"warn: token expires in {days:.1f} days — run `ig-agent auth refresh` soon.")
+
+
+def require_scope(acct, scope):
+    """Fail fast when ig-agent's recorded grant lacks a write scope.
+
+    granted_scopes is only recorded for config-file accounts; env-token
+    callers skip the check and let the API decide.
+    """
+    granted = acct.get("granted_scopes")
+    if granted is None:
+        return
+    if scope not in granted:
+        raise SystemExit(
+            f"ERROR: account @{acct.get('username')} was authorised without "
+            f'"{scope}".\nRe-authenticate with that scope granted (Instagram Login '
+            f"currently does not grant it — a Facebook-Login app path and/or app "
+            f"review may be required), then retry. Skipping the API call."
+        )
 
 
 def api_call(method, path, params, base, version, timeout=60):
@@ -320,6 +355,7 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     acct = load_account(args.config, args.account, args.token)
+    check_token_freshness(acct)
     base, version = args.api_base, args.api_version
 
     if args.cmd == "me":
@@ -383,6 +419,7 @@ def main(argv=None):
             raise SystemExit(friendly_error(e.payload))
         emit({"ok": True, "container_id": args.container_id, **res}, args.pretty)
     elif args.cmd == "delete":
+        require_scope(acct, SCOPE_HINTS["delete"])
         try:
             res = api_call("DELETE", str(args.media_id),
                            {"access_token": acct["user_access_token"]},
@@ -392,6 +429,7 @@ def main(argv=None):
         emit({"ok": True, "mode": "delete", "media_id": args.media_id,
               "result": res}, args.pretty)
     elif args.cmd in ("like", "unlike"):
+        require_scope(acct, SCOPE_HINTS["engagement"])
         target = {"media_id": args.media_id} if args.media_id else {"comment_id": args.comment_id}
         method = "POST" if args.cmd == "like" else "DELETE"
         params = dict(target)
