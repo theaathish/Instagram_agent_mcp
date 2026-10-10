@@ -1,9 +1,9 @@
 // Shared HTTP plumbing for the api/ functions.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { loadCfg, originOf, type Cfg } from "../lib/env";
-import { kvStore, type Store } from "../lib/store";
-import { bearerToken, checkAccessToken, unauthorizedChallenge } from "../lib/oauth";
+import { loadCfg, originOf, type Cfg } from "./env";
+import { kvStore, type Store } from "./store";
+import { bearerToken, checkAccessToken, unauthorizedChallenge } from "./oauth";
 
 export function reqOrigin(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string) || (req.headers.host as string) || "localhost:3000";

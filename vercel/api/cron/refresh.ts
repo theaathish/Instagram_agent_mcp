@@ -1,7 +1,7 @@
 // GET /api/cron/refresh — Vercel Cron (every 30 days). Guarded by CRON_SECRET.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { needCfg, sendJson, store } from "../_http";
+import { needCfg, sendJson, store } from "../../lib/http";
 import { refreshTokenIfNeeded } from "../../lib/ig";
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
