@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ig-mcp</title>
+<style>body{font-family:system-ui,sans-serif;max-width:40rem;margin:3rem auto;padding:0 1rem}code{background:#f3f4f6;padding:.1rem .3rem}</style>
+<h1>ig-mcp — Instagram MCP server (Vercel)</h1>
+<ul>
+<li>MCP endpoint: <code>/mcp</code> (OAuth required)</li>
+<li>OpenAPI (Custom GPT Actions): <code>/api/openapi.json</code></li>
+<li>Seed token: <code>/api/admin/seed-token</code> (admin password)</li>
+</ul>
+<p>Setup: see README_DEPLOY_VERCEL.md in the repo.</p>
+<script>for (const c of document.querySelectorAll("code")) { if (c.textContent.startsWith("/")) c.textContent = location.origin + c.textContent; }</script>

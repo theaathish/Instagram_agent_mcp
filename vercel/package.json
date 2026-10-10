@@ -1,0 +1,26 @@
+{
+  "name": "ig-mcp-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remote Instagram MCP server on Vercel Hobby (free plan)",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@vercel/blob": "^1.1.1",
+    "@vercel/kv": "^3.0.0",
+    "jose": "^6.1.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@vercel/node": "^5.5.7",
+    "typescript": "^5.9.3",
+    "vercel": "^48.8.0",
+    "vitest": "^3.2.4"
+  }
+}

@@ -93,7 +93,24 @@ Tools: `ig_me, ig_post, ig_reel, ig_story, ig_carousel_item, ig_carousel,
 ig_publish, ig_container_status, ig_delete, ig_like, ig_unlike`.
 The token is read from your local ig-agent config — no extra login.
 
-## Remote (Cloudflare)
+## Remote (Vercel) — recommended
+
+A remote MCP server for Claude (custom connector) and ChatGPT lives in
+[`vercel/`](./vercel) — Node serverless functions on Vercel Hobby (free):
+
+- MCP over Streamable HTTP at `/mcp` (stateless), hand-rolled OAuth 2.1
+  single-user login (`ADMIN_PASSWORD`) + dynamic client registration
+- Same 17 tools as below (publishing + analytics + image generation);
+  every write defaults to `dry_run=true`; 95/24h publish cap
+- Vercel KV (token/OAuth state) + Vercel Blob (public image URLs) +
+  Vercel Cron (30-day token refresh); images via free Pollinations/HF
+- Minimal `/api/rest/*` + `/api/openapi.json` for Custom GPT Actions
+
+Deploy: import the repo with Root Directory `vercel`, add KV + Blob in the
+dashboard, set env vars, redeploy. Full walkthrough:
+[`vercel/README_DEPLOY_VERCEL.md`](./vercel/README_DEPLOY_VERCEL.md).
+
+## Remote (Cloudflare) — alternative
 
 A remote MCP server for Claude (custom connector) and ChatGPT lives in
 [`worker/`](./worker) — TypeScript on Cloudflare Workers (free plan):
