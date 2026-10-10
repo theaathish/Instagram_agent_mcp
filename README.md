@@ -104,7 +104,7 @@ A remote MCP server for Claude (custom connector) and ChatGPT lives in
   **plus** analytics (`ig_account_insights`, `ig_list_media`, `ig_media_insights`,
   `ig_get_comments`/`ig_reply_comment`, `ig_audience_demographics`,
   `ig_best_posting_time`) and image generation (`ig_generate_image`,
-  `ig_generate_and_post` via Workers AI flux-1-schnell → R2)
+  `ig_generate_and_post` via Workers AI flux-1-schnell → KV)
 - Every write tool defaults to `dry_run=true` (preview; publish only when
   `dry_run=false`); 95/24h publish safety cap; KV token storage with 30-day
   cron refresh; minimal `/api/*` REST + `/openapi.json` for Custom GPT Actions

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # setup.sh — one-time Cloudflare provisioning for ig-mcp-worker (free plan).
-# Creates the KV namespace + R2 bucket, wires the KV id into wrangler.jsonc,
-# and prints the exact secrets to set. Idempotent-ish: skips creation when
-# the KV id is already filled in.
+# Creates the KV namespace, wires its id into wrangler.jsonc, and prints the
+# exact secrets to set. Idempotent-ish: skips creation when the KV id is
+# already filled in. No R2 or paid services needed (images live in KV).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -32,13 +32,6 @@ else
   echo "==> KV id already set in wrangler.jsonc, skipping creation."
 fi
 
-echo "==> Creating R2 bucket ig-mcp-images ..."
-if wrangler r2 bucket create ig-mcp-images 2>&1 | tail -2; then
-  :
-else
-  echo "(If the bucket already exists, that error is fine — continuing.)"
-fi
-
 cat <<'EOF'
 
 ==============================================================
@@ -51,9 +44,9 @@ Next: set secrets (values never go into git), then deploy.
 
   wrangler deploy
 
-Image URLs are served by the Worker itself as
+Image URLs are served by the Worker itself from KV as
   https://<your-worker>.workers.dev/img/<key>
-so the R2 bucket does NOT need public (r2.dev) access. If you prefer a
+so there is nothing else to provision. If you prefer a
 custom image domain, set vars.PUBLIC_IMAGE_BASE_URL in wrangler.jsonc.
 
 Full walkthrough: see README_DEPLOY.md
