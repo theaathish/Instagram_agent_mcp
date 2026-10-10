@@ -1,13 +1,18 @@
-// Image generation (Workers AI flux-1-schnell) -> R2.
-// The model returns fixed-size PNG bytes; we stream them straight into R2
-// (no large in-memory buffers) and serve them back over https via /img/*
-// so Meta's crawler can fetch them. Meta accepts PNG for feed posts, so no
-// JPEG transcoding step is needed (Workers have no image codec on free plan).
+// Image generation (Workers AI flux-1-schnell) -> KV.
+// The model returns fixed-size PNG bytes; we store them in the same KV
+// namespace (90-day TTL — Meta fetches the image at publish time and hosts
+// its own copy, so expiry is safe) and serve them back over https via /img/*
+// so Meta's crawler can fetch them. No R2, no paid services: the whole stack
+// is Workers + KV + Workers AI, all free-tier. Meta accepts PNG for feed
+// posts, so no JPEG transcoding step is needed (Workers have no image codec).
 
 import type { Env } from "./env";
 import { imageModel } from "./env";
 
 export type Aspect = "1:1" | "4:5" | "9:16";
+
+/** Generated images live this long in KV (Meta keeps its own copy after publish). */
+export const IMAGE_TTL_SECONDS = 90 * 86400;
 
 const ASPECT_SUFFIX: Record<Aspect, string> = {
   "1:1": "square 1:1 composition, centered subject",
@@ -33,13 +38,15 @@ function publicBase(env: Env, origin: string): string {
   return origin.replace(/\/+$/, "");
 }
 
-/** Normalize Workers AI image output into a streamable body for R2. */
-async function toR2Body(out: unknown): Promise<ReadableStream | ArrayBuffer> {
-  if (out instanceof ReadableStream) return out;
+/** Normalize Workers AI image output into bytes for KV (small, ~1-2 MB). */
+async function toBytes(out: unknown): Promise<ArrayBuffer> {
   if (out instanceof ArrayBuffer) return out;
   if (ArrayBuffer.isView(out)) {
     const v = out as Uint8Array;
     return v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer;
+  }
+  if (out instanceof ReadableStream) {
+    return new Response(out).arrayBuffer();
   }
   if (out && typeof out === "object") {
     const o = out as Record<string, unknown>;
@@ -70,9 +77,9 @@ export async function generateImage(
   } as unknown as never)) as unknown;
 
   const key = datedKey();
-  const body = await toR2Body(out);
-  await deps.env.IMAGES.put(key, body as never, {
-    httpMetadata: { contentType: "image/png", cacheControl: "public, max-age=31536000, immutable" },
+  await deps.env.IG_KV.put(key, await toBytes(out), {
+    metadata: { contentType: "image/png" },
+    expirationTtl: IMAGE_TTL_SECONDS,
   });
 
   const url = `${publicBase(deps.env, deps.origin)}/img/${key}`;
@@ -81,20 +88,21 @@ export async function generateImage(
     key,
     prompt_used: promptUsed,
     aspect,
-    note: "flux-1-schnell renders a fixed-size square PNG; the aspect value guides composition via the prompt. Meta accepts PNG directly.",
+    note: "flux-1-schnell renders a fixed-size square PNG; the aspect value guides composition via the prompt. Meta accepts PNG directly. Stored in KV (90-day TTL).",
   };
 }
 
-/** Public GET /img/<key> — streams the object to Meta's crawler (no auth). */
+/** Public GET /img/<key> — serves the stored bytes to Meta's crawler (no auth). */
 export async function serveImage(env: Env, key: string): Promise<Response> {
   if (!key || key.includes("..") || !key.startsWith("img/") || key.length > 200) {
     return new Response("Not found", { status: 404 });
   }
-  const obj = await env.IMAGES.get(key);
-  if (!obj) return new Response("Not found", { status: 404 });
-  const headers = new Headers();
-  obj.writeHttpMetadata(headers);
-  headers.set("etag", obj.httpEtag);
-  headers.set("cache-control", "public, max-age=31536000, immutable");
-  return new Response(obj.body, { headers });
+  const got = await env.IG_KV.getWithMetadata<{ contentType?: string }>(key, "arrayBuffer");
+  if (!got.value) return new Response("Not found", { status: 404 });
+  return new Response(got.value, {
+    headers: {
+      "content-type": got.metadata?.contentType ?? "image/png",
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
 }

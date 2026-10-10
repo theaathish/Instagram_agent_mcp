@@ -1,8 +1,8 @@
 # ig-mcp-worker — deploy guide (Cloudflare free plan)
 
 Remote MCP server for your Instagram Business page: analyse, generate images,
-and publish posts straight from Claude / ChatGPT chat. Everything runs on
-Cloudflare's **free plan** (Workers + KV + R2 + Workers AI + cron).
+and publish posts straight from Claude / ChatGPT chat. The whole stack is
+**Workers + KV + Workers AI + cron — all free-tier, no R2, no paid services**.
 
 Endpoints (after deploy, `https://<worker>.workers.dev`):
 
@@ -43,9 +43,9 @@ wrangler login
 ./scripts/setup.sh
 ```
 
-`setup.sh` creates the KV namespace (`ig-mcp-kv`) and the R2 bucket
-(`ig-mcp-images`), patches the KV id into `wrangler.jsonc`, and prints the
-secrets step. Then:
+`setup.sh` creates the KV namespace (`ig-mcp-kv`), patches its id into
+`wrangler.jsonc`, and prints the secrets step. Generated images are stored in
+that same KV namespace (90-day TTL) — there is nothing else to provision.
 
 ```bash
 wrangler secret put ADMIN_PASSWORD       # your private login password (OAuth + seed page)
@@ -138,9 +138,9 @@ Check container status for <container_id> (ig_container_status), then publish it
 
 - **Stateless MCP** (fresh server per request, no Durable Objects) — the only
   shape that fits the free plan with zero config.
-- **Images:** Workers AI `flux-1-schnell` → streamed straight to R2 (no big
-  buffers) → served as `https://<worker>/img/<key>`. R2 needs **no public
-  access**. Flux renders fixed-size square PNGs; the `aspect` parameter guides
+- **Images:** Workers AI `flux-1-schnell` → stored in KV (90-day TTL; Meta
+  keeps its own copy once published) → served as `https://<worker>/img/<key>`.
+  Flux renders fixed-size square PNGs; the `aspect` parameter guides
   composition via the prompt, and Meta accepts PNG directly (no JPEG step —
   Workers have no image codec on the free plan).
 - **Videos:** the worker never blocks on transcoding — reels/carousels return
@@ -151,5 +151,6 @@ Check container status for <container_id> (ig_container_status), then publish it
   long-lived tokens last ~60 days, so this has 2× headroom. If a refresh ever
   fails, re-seed via `/admin/seed-token`.
 - **Costs to watch:** Workers AI free = 10k neurons/day (one schnell image ≈
-  well within); KV free = 100k reads/day; R2 free = 10 GB storage, zero egress
-  fees. Normal personal use stays free.
+  well within); KV free = 100k reads/day, 1k writes/day, 1 GB storage (≈500+
+  generated images with the 90-day TTL). Normal personal use stays free, and
+  no payment method is required for any of it.

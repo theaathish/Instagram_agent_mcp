@@ -553,6 +553,6 @@ export const TOOL_META = [
   { name: "ig_reply_comment", desc: "Reply to a comment (posts immediately)." },
   { name: "ig_audience_demographics", desc: "Follower demographics by country, city, age, gender. Partial failures are reported per breakdown with a re-auth hint." },
   { name: "ig_best_posting_time", desc: "Top posting slots (weekday + hour) from recent posts' likes/comments. Timezone defaults to Asia/Kolkata." },
-  { name: "ig_generate_image", desc: "Generate an image with Workers AI (flux-1-schnell + brand style), upload to R2, return a PUBLIC https URL usable in ig_post." },
+  { name: "ig_generate_image", desc: "Generate an image with Workers AI (flux-1-schnell + brand style), store it in KV, return a PUBLIC https URL usable in ig_post." },
   { name: "ig_generate_and_post", desc: "Generate an image AND post it. Dry-run (default) returns the image URL + caption preview WITHOUT publishing; publishes only when dry_run=false." },
 ] as const;

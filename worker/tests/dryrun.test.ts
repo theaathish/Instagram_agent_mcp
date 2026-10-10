@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../src/env";
+import { serveImage } from "../src/images";
 import {
   ig_carousel,
   ig_container_status,
@@ -28,7 +29,6 @@ function makeEnv(): Env {
   return {
     OAUTH_KV: kv,
     IG_KV: kv,
-    IMAGES: {} as R2Bucket,
     AI: {} as Ai,
     ADMIN_PASSWORD: "pw",
     IG_USER_ID: "999",
@@ -85,14 +85,14 @@ describe("dry_run behaviour (no network when previewing)", () => {
 
   it("ig_generate_and_post dry_run generates but does NOT publish", async () => {
     const fetchFn = vi.fn(async () => jsonRes(200, {}));
-    const put = vi.fn(async () => undefined);
+    const kvPut = vi.fn(async (_k: string, _v: unknown) => undefined);
     const env = seedTokenEnv();
-    env.IMAGES = { put } as unknown as R2Bucket;
+    env.IG_KV = { ...env.IG_KV, put: kvPut } as unknown as KVNamespace;
     env.AI = { run: async () => new Uint8Array([1, 2, 3]).buffer } as unknown as Ai;
     const ctx: ToolCtx = { env, origin: "https://x.workers.dev", fetchFn: fetchFn as typeof fetch };
     const res = await ig_generate_and_post(ctx, { prompt: "a cat", caption: "meow" });
     expect(res).toMatchObject({ ok: true, dry_run: true, action: "ig_generate_and_post" });
-    expect(put).toHaveBeenCalledTimes(1); // image generated+uploaded
+    expect(kvPut).toHaveBeenCalledTimes(1); // image generated + stored in KV
     expect(fetchFn).not.toHaveBeenCalled(); // but nothing published
   });
 });
@@ -142,5 +142,28 @@ describe("real publish paths (mocked Graph API)", () => {
     const ctx: ToolCtx = { env: seedTokenEnv(), origin: "https://x.workers.dev", fetchFn: fetchFn as typeof fetch };
     const res = await ig_container_status(ctx, { container_id: "cid9" });
     expect(res).toMatchObject({ ok: true, status_code: "FINISHED" });
+  });
+
+  it("serveImage round-trips KV-stored bytes and rejects traversal", async () => {
+    const store = new Map<string, ArrayBuffer>();
+    const env = makeEnv();
+    env.IG_KV = {
+      get: async () => null,
+      put: async (k: string, v: ArrayBuffer) => {
+        store.set(k, v);
+      },
+      getWithMetadata: async (k: string) => ({
+        value: store.get(k) ?? null,
+        metadata: { contentType: "image/png" },
+      }),
+    } as unknown as KVNamespace;
+    const bytes = new Uint8Array([137, 80, 78, 71]).buffer;
+    await env.IG_KV.put("img/20250101/x.png", bytes);
+    const res = await serveImage(env, "img/20250101/x.png");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(new Uint8Array([137, 80, 78, 71]));
+    expect((await serveImage(env, "../evil")).status).toBe(404);
+    expect((await serveImage(env, "img/missing.png")).status).toBe(404);
   });
 });

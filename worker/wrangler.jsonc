@@ -17,14 +17,13 @@
   },
 
   // One KV namespace bound twice (OAuth library requires the OAUTH_KV
-  // name; IG_* keys live under the "ig:" prefix in the same namespace
-  // to stay within free-plan limits). setup.sh fills in the id.
+  // name; IG_* keys and generated images live under the "ig:" / "img/"
+  // prefixes in the same namespace — Workers + KV + AI only, no R2).
+  // setup.sh fills in the id.
   "kv_namespaces": [
     { "binding": "OAUTH_KV", "id": "KV_NAMESPACE_ID" },
     { "binding": "IG_KV", "id": "KV_NAMESPACE_ID" }
   ],
-
-  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "ig-mcp-images" }],
 
   "ai": { "binding": "AI" },
 

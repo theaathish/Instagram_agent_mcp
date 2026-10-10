@@ -5,7 +5,6 @@
 export interface Env {
   OAUTH_KV: KVNamespace;
   IG_KV: KVNamespace;
-  IMAGES: R2Bucket;
   AI: Ai;
   ADMIN_PASSWORD: string;
   IG_USER_ID: string;
