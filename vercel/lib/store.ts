@@ -32,8 +32,13 @@ async function kvClient(): Promise<KvLike> {
 
 export const kvStore: Store = {
   async get(key) {
-    const v = await (await kvClient()).get<string>(key);
-    return v ?? null;
+    // @upstash/redis auto-deserializes JSON by default, so a stored JSON string
+    // comes back as an already-parsed object rather than a string. Normalise here
+    // so callers always receive a string (or null), matching the Store interface.
+    const v = await (await kvClient()).get<unknown>(key);
+    if (v === null || v === undefined) return null;
+    if (typeof v === "string") return v;
+    return JSON.stringify(v);
   },
   async set(key, value, opts) {
     if (opts?.ex) await (await kvClient()).set(key, value, { ex: opts.ex });

@@ -208,7 +208,15 @@ export async function registerClient(
     resp["client_secret_expires_at"] = 0;
   }
   await store.set(`oauth:client:${client_id}`, JSON.stringify(rec));
-  return { status: 201, body: resp };
+  // Read-after-write: surfaces Upstash replication lag immediately.
+  let verified = false;
+  try {
+    const back = await store.get(`oauth:client:${client_id}`);
+    verified = !!back && JSON.parse(back as string).client_id === client_id;
+  } catch {
+    verified = false;
+  }
+  return { status: 201, body: { ...resp, _stored: verified } };
 }
 
 export async function getClient(store: Store, clientId: string): Promise<ClientRec | null> {
