@@ -2,7 +2,7 @@
 // OAuth-guarded; stateless Streamable HTTP (fits Hobby 60s functions).
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { guardAuth, maybeOptions, needCfg, reqOrigin, sendJson, store } from "./_http";
+import { guardAuth, maybeOptions, needCfg, reqOrigin, sendJson, store } from "../lib/http";
 import { handleMcp, makeToolCtx } from "../lib/mcp";
 
 export const config = { api: { bodyParser: false } };

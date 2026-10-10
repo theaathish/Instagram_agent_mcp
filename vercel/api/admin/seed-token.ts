@@ -1,7 +1,7 @@
 // GET/POST /api/admin/seed-token — password-protected one-time IG token seed.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { maybeOptions, needCfg, readBody, sendHtml, sendJson, store, noBodyParse } from "../_http";
+import { maybeOptions, needCfg, readBody, sendHtml, sendJson, store, noBodyParse } from "../../lib/http";
 import { seedToken } from "../../lib/ig";
 import { verifyPassword } from "../../lib/oauth";
 import { errorPage, seedForm } from "../../lib/pages";
