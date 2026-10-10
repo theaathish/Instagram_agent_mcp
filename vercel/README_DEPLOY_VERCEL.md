@@ -14,7 +14,7 @@ Endpoints (after deploy, `https://<project>.vercel.app`):
 | `/.well-known/oauth-authorization-server` | RFC 8414 discovery |
 | `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/register` | Login + token + dynamic client registration |
 | `/api/rest/*` | Minimal REST mirrors (same Bearer tokens) |
-| `/api/openapi.json` | OpenAPI 3.1 for Custom GPT Actions |
+| `/api/openapi` (alias `/api/openapi.json`) | OpenAPI 3.1 for Custom GPT Actions |
 | `/api/admin/seed-token` | One-time token seeding (admin password) |
 | `/api/cron/refresh` | Cron (every 30 days, `CRON_SECRET`-guarded) |
 
@@ -90,7 +90,7 @@ Settings → Connectors → Add custom connector →
 
 - **Developer mode (Plus/Pro+)**: add MCP server → same `/mcp` URL → OAuth.
 - **Free/Go**: Custom GPT → Actions → import
-  `https://<project>.vercel.app/api/openapi.json`; Auth = OAuth,
+  `https://<project>.vercel.app/api/openapi`; Auth = OAuth,
   Authorization URL `…/api/oauth/authorize`, Token URL `…/api/oauth/token`,
   Scope `ig:read ig:write`.
 

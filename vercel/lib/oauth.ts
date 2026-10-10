@@ -10,7 +10,7 @@
 //   POST /api/oauth/token                        code exchange + refresh rotation
 
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { jwtVerify, SignJWT } from "jose";
+import { signJwt, verifyJwt } from "./jwt";
 import type { Cfg } from "./env";
 import type { Store } from "./store";
 
@@ -99,16 +99,16 @@ export function escapeHtml(s: string): string {
 // --- JWT access tokens ----------------------------------------------------------
 
 export async function mintAccessToken(cfg: Cfg, origin: string, scope: string[]): Promise<string> {
-  const secret = new TextEncoder().encode(cfg.oauthJwtSecret);
-  return new SignJWT({ scope })
-    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
-    .setIssuedAt()
-    .setIssuer(origin)
-    .setAudience(mcpResourceOf(origin))
-    .setSubject("admin")
-    .setJti(b64url(12))
-    .setExpirationTime(Math.floor(Date.now() / 1000) + ACCESS_TTL_S)
-    .sign(secret);
+  const now = Math.floor(Date.now() / 1000);
+  return signJwt(cfg.oauthJwtSecret, {
+    scope,
+    iss: origin,
+    aud: mcpResourceOf(origin),
+    sub: "admin",
+    jti: b64url(12),
+    iat: now,
+    exp: now + ACCESS_TTL_S,
+  });
 }
 
 export async function checkAccessToken(
@@ -116,20 +116,13 @@ export async function checkAccessToken(
   origin: string,
   token: string,
 ): Promise<{ scope: string[] } | null> {
-  try {
-    const secret = new TextEncoder().encode(cfg.oauthJwtSecret);
-    const { payload } = await jwtVerify(token, secret, {
-      issuer: origin,
-      audience: mcpResourceOf(origin),
-    });
-    const scope = Array.isArray(payload["scope"])
-      ? (payload["scope"] as string[])
-      : String(payload["scope"] ?? "").split(" ").filter(Boolean);
-    if (payload.sub !== "admin") return null;
-    return { scope };
-  } catch {
-    return null;
-  }
+  const claims = verifyJwt(cfg.oauthJwtSecret, token);
+  if (!claims) return null;
+  if (claims.sub !== "admin" || claims.iss !== origin || claims.aud !== mcpResourceOf(origin)) return null;
+  const scope = Array.isArray(claims.scope)
+    ? (claims.scope as string[])
+    : String(claims.scope ?? "").split(" ").filter(Boolean);
+  return { scope };
 }
 
 export function bearerToken(req: { headers?: Record<string, unknown> }): string | null {
