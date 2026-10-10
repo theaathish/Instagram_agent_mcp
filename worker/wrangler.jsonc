@@ -1,0 +1,35 @@
+// $schema: https://unpkg.com/wrangler@4.149.0/config-schema.json
+{
+  // Canonical resource/audience URLs are derived per-request from the
+  // incoming Host, so this Worker works on any *.workers.dev subdomain,
+  // custom domain, or localhost without config changes.
+  "name": "ig-mcp-agent",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-27",
+  "compatibility_flags": ["global_fetch_strictly_public", "nodejs_compat"],
+  "workers_dev": true,
+
+  "vars": {
+    "IG_API_VERSION": "v26.0",
+    "IG_GRAPH_BASE": "https://graph.instagram.com",
+    "IMAGE_MODEL": "@cf/black-forest-labs/flux-1-schnell",
+    "PUBLIC_IMAGE_BASE_URL": ""
+  },
+
+  // One KV namespace bound twice (OAuth library requires the OAUTH_KV
+  // name; IG_* keys live under the "ig:" prefix in the same namespace
+  // to stay within free-plan limits). setup.sh fills in the id.
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "KV_NAMESPACE_ID" },
+    { "binding": "IG_KV", "id": "KV_NAMESPACE_ID" }
+  ],
+
+  "r2_buckets": [{ "binding": "IMAGES", "bucket_name": "ig-mcp-images" }],
+
+  "ai": { "binding": "AI" },
+
+  "triggers": { "crons": ["0 8 */30 * *"] },
+
+  "observability": { "enabled": false },
+  "upload_source_maps": false
+}
