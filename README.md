@@ -110,28 +110,6 @@ Deploy: import the repo with Root Directory `vercel`, add KV + Blob in the
 dashboard, set env vars, redeploy. Full walkthrough:
 [`vercel/README_DEPLOY_VERCEL.md`](./vercel/README_DEPLOY_VERCEL.md).
 
-## Remote (Cloudflare) — alternative
-
-A remote MCP server for Claude (custom connector) and ChatGPT lives in
-[`worker/`](./worker) — TypeScript on Cloudflare Workers (free plan):
-
-- MCP over Streamable HTTP at `/mcp` (stateless, no Durable Objects),
-  OAuth 2.1 single-user login (`ADMIN_PASSWORD`), dynamic client registration
-- Ports all Python publishing tools (`container → poll FINISHED → media_publish`)
-  **plus** analytics (`ig_account_insights`, `ig_list_media`, `ig_media_insights`,
-  `ig_get_comments`/`ig_reply_comment`, `ig_audience_demographics`,
-  `ig_best_posting_time`) and image generation (`ig_generate_image`,
-  `ig_generate_and_post` via Workers AI flux-1-schnell → KV)
-- Every write tool defaults to `dry_run=true` (preview; publish only when
-  `dry_run=false`); 95/24h publish safety cap; KV token storage with 30-day
-  cron refresh; minimal `/api/*` REST + `/openapi.json` for Custom GPT Actions
-- Like/unlike/delete are intentionally **not** ported (scopes not grantable on
-  the Instagram Login path)
-
-Deploy: `cd worker && ./scripts/setup.sh`, set secrets, `wrangler deploy`.
-Full walkthrough (Meta app, Claude connector, ChatGPT Actions, test prompts):
-[`worker/README_DEPLOY.md`](./worker/README_DEPLOY.md).
-
 ## Layout
 
 ```

@@ -43,11 +43,11 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
           responses: { "200": { description: "Media list" } },
         },
       },
-      "/media/{media_id}/insights": {
+      "/insights": {
         get: {
           operationId: "mediaInsights",
           summary: "Per-media insights (reach, saved, shares, views, total_interactions).",
-          parameters: [{ name: "media_id", in: "path", required: true, schema: { type: "string" } }],
+          parameters: [{ name: "media_id", in: "query", required: true, schema: { type: "string" } }],
           responses: { "200": { description: "Insights" } },
         },
       },

@@ -25,13 +25,11 @@ Sign up at <https://vercel.com/signup> (Hobby plan, no card). Install the CLI:
 
 ## 1. Meta developer app — Instagram API with Instagram Login
 
-Same as before (unchanged from the Cloudflare version):
-
 1. <https://developers.facebook.com/apps> → Create App → add **Instagram API**.
 2. Scopes: `instagram_business_basic`, `instagram_business_content_publish`,
    `instagram_business_manage_insights`, `instagram_business_manage_comments`.
    (Like/unlike/delete scopes are not granted on Instagram Login — the
-   worker omits those tools on purpose.)
+   server omits those tools on purpose.)
 3. **Roles → Testers**: add your IG account, accept the invite.
 4. Connect your Business/Creator account; generate a **long-lived token**
    (~60 days) and note your numeric IG user id.

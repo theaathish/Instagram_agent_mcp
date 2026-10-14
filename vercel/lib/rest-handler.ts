@@ -48,7 +48,7 @@ async function handleMediaList(req: VercelRequest, res: VercelResponse): Promise
   sendJson(res, 200, await ig_list_media(a.ctx, parsed.data));
 }
 
-async function handleMediaInsights(req: VercelRequest, res: VercelResponse, mediaId: string): Promise<void> {
+export async function handleMediaInsights(req: VercelRequest, res: VercelResponse, mediaId: string): Promise<void> {
   const a = await authed(req, res);
   if (!a) return;
   if (!mediaId) {
@@ -72,9 +72,42 @@ async function authedPost(
   return { ctx: a.ctx, json };
 }
 
+/**
+ * Path segments under /api/rest. Parsed from req.url (not req.query.path):
+ * the Vercel Node builder does not reliably populate query params for
+ * catch-all routes, so the URL pathname is the source of truth.
+ * Falls back to req.query.path for local tests / other runtimes.
+ */
+export function restSegs(req: VercelRequest): string[] {
+  const fromQuery = (): string[] => {
+    const raw = req.query.path;
+    return raw === undefined ? [] : (Array.isArray(raw) ? raw : [raw]).map((s) => String(s));
+  };
+  try {
+    const rawUrl = String((req as { url?: unknown }).url || "");
+    if (!rawUrl) return fromQuery();
+    const pathname = new URL(rawUrl, "http://localhost").pathname.replace(/\/+$/, "");
+    const prefix = "/api/rest";
+    if (pathname === prefix) return [];
+    if (!pathname.startsWith(prefix + "/")) return fromQuery();
+    return pathname
+      .slice(prefix.length + 1)
+      .split("/")
+      .filter(Boolean)
+      .map((s) => {
+        try {
+          return decodeURIComponent(s);
+        } catch {
+          return s;
+        }
+      });
+  } catch {
+    return fromQuery();
+  }
+}
+
 export async function handleRest(req: VercelRequest, res: VercelResponse): Promise<void> {
-  const raw = req.query.path;
-  const segs: string[] = raw === undefined ? [] : (Array.isArray(raw) ? raw : [raw]).map((s) => String(s));
+  const segs = restSegs(req);
   const method = (req.method || "").toUpperCase();
 
   if (method === "GET" && (segs.length === 0 || (segs.length === 1 && segs[0] === "account"))) {
