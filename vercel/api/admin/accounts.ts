@@ -72,20 +72,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         return;
       }
 
-      // Query Meta Graph API /me endpoint to verify token and extract profile
-      const me = await graphCall(
-        { base: cfg.graphBase, version: cfg.apiVersion, token, fetchFn: globalThis.fetch },
-        "GET",
-        "me",
-        { fields: "id,username,account_type" },
-      );
+      let userId = "";
+      let username = "";
+      let accountType = "BUSINESS";
 
-      const userId = String(me["id"] || "");
-      const username = String(me["username"] || userId);
-      const accountType = String(me["account_type"] || "BUSINESS");
+      // 1. Query Instagram Graph API
+      try {
+        const me = await graphCall(
+          { base: cfg.graphBase, version: cfg.apiVersion, token, fetchFn: globalThis.fetch },
+          "GET",
+          "me",
+          { fields: "id,username,account_type" },
+        );
+        userId = String(me["id"] || "");
+        username = String(me["username"] || userId);
+        accountType = String(me["account_type"] || "BUSINESS");
+      } catch {
+        // 2. Fallback: try graph.facebook.com in case it's a Meta/Facebook user token
+        try {
+          const fbRes = await graphCall(
+            { base: "https://graph.facebook.com", version: "v22.0", token, fetchFn: globalThis.fetch },
+            "GET",
+            "me",
+            { fields: "id,username,name" },
+          );
+          userId = String(fbRes["id"] || "");
+          username = String(fbRes["username"] || fbRes["name"] || userId);
+
+          // Check if there are connected IG business accounts on managed pages
+          const pagesRes = await graphCall(
+            { base: "https://graph.facebook.com", version: "v22.0", token, fetchFn: globalThis.fetch },
+            "GET",
+            "me/accounts",
+            { fields: "id,name,instagram_business_account{id,username,account_type}" },
+          );
+          const data = (Array.isArray(pagesRes["data"]) ? pagesRes["data"] : []) as Array<{
+            instagram_business_account?: { id?: string; username?: string; account_type?: string };
+          }>;
+          for (const item of data) {
+            if (item.instagram_business_account?.id) {
+              userId = item.instagram_business_account.id;
+              username = item.instagram_business_account.username || username;
+              accountType = item.instagram_business_account.account_type || "BUSINESS";
+              break;
+            }
+          }
+        } catch {
+          // both endpoints exhausted
+        }
+      }
 
       if (!userId) {
-        sendJson(res, 400, { ok: false, error: "Meta API did not return an account id for this token." });
+        sendJson(res, 400, { ok: false, error: "Meta API did not return an account id for this token. Please check that the token is valid." });
         return;
       }
 
