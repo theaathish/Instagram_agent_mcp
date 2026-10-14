@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Cfg } from "./env";
 import type { Store } from "./store";
+import { createFirebaseStore, type AccountStore } from "./firebase";
 import {
   S_ig_account_insights,
   S_ig_audience_demographics,
@@ -16,6 +17,7 @@ import {
   S_ig_generate_and_post,
   S_ig_generate_image,
   S_ig_get_comments,
+  S_ig_list_accounts,
   S_ig_list_media,
   S_ig_me,
   S_ig_media_insights,
@@ -23,6 +25,7 @@ import {
   S_ig_publish,
   S_ig_reel,
   S_ig_reply_comment,
+  S_ig_set_active_account,
   S_ig_story,
   TOOL_META,
   ig_account_insights,
@@ -34,6 +37,7 @@ import {
   ig_generate_and_post,
   ig_generate_image,
   ig_get_comments,
+  ig_list_accounts,
   ig_list_media,
   ig_me,
   ig_media_insights,
@@ -41,12 +45,13 @@ import {
   ig_publish,
   ig_reel,
   ig_reply_comment,
+  ig_set_active_account,
   ig_story,
   type ToolCtx,
 } from "./tools";
 
 const SERVER_NAME = "ig-mcp";
-const SERVER_VERSION = "1.0.0";
+const SERVER_VERSION = "2.0.0";
 
 export function buildMcpServer(ctx: ToolCtx): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION });
@@ -54,6 +59,8 @@ export function buildMcpServer(ctx: ToolCtx): McpServer {
   const text = (p: Promise<unknown>) =>
     p.then((r) => ({ content: [{ type: "text" as const, text: JSON.stringify(r) }] }));
 
+  server.registerTool("ig_list_accounts", { description: desc("ig_list_accounts"), inputSchema: S_ig_list_accounts }, async (a) => text(ig_list_accounts(ctx, a)));
+  server.registerTool("ig_set_active_account", { description: desc("ig_set_active_account"), inputSchema: S_ig_set_active_account }, async (a) => text(ig_set_active_account(ctx, a)));
   server.registerTool("ig_me", { description: desc("ig_me"), inputSchema: S_ig_me }, async (a) => text(ig_me(ctx, a)));
   server.registerTool("ig_post", { description: desc("ig_post"), inputSchema: S_ig_post }, async (a) => text(ig_post(ctx, a)));
   server.registerTool("ig_reel", { description: desc("ig_reel"), inputSchema: S_ig_reel }, async (a) => text(ig_reel(ctx, a)));
@@ -75,8 +82,9 @@ export function buildMcpServer(ctx: ToolCtx): McpServer {
   return server;
 }
 
-export function makeToolCtx(cfg: Cfg, store: Store, origin: string): ToolCtx {
-  return { deps: { cfg, store }, origin };
+export function makeToolCtx(cfg: Cfg, store: Store, origin: string, accountStore?: AccountStore): ToolCtx {
+  const acctStore = accountStore ?? createFirebaseStore(cfg.firebaseDatabaseUrl, undefined, cfg.firebaseAuthSecret);
+  return { deps: { cfg, store, accountStore: acctStore }, origin };
 }
 
 /** Vercel parses JSON bodies for us — pass req.body straight through. */

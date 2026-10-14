@@ -10,6 +10,7 @@
 import type { Cfg } from "./env";
 import { graphCall, IgApiError, type FetchFn, type GraphParams, type HttpMethod } from "./graph";
 import type { Store } from "./store";
+import type { AccountStore } from "./firebase";
 
 const K_TOKEN = "ig:token";
 const K_USER_ID = "ig:user_id";
@@ -53,16 +54,41 @@ export class BudgetExceededError extends Error {
 export interface IgDeps {
   cfg: Cfg;
   store: Store;
+  accountStore?: AccountStore;
   fetchFn?: FetchFn;
   putBlob?: (key: string, bytes: ArrayBuffer) => Promise<{ url: string }>;
 }
 
 /**
- * Load IG credentials. Falls back to the IG_LONG_LIVED_TOKEN env seed
- * (one-time) when the store is empty, then persists it. Never logs the token.
+ * Load IG credentials. Supports dynamic multi-account resolution via
+ * AccountStore, falling back to KV / env seed when no accounts exist.
  */
-export async function loadCreds(deps: IgDeps): Promise<Creds> {
-  const { cfg, store } = deps;
+export async function loadCreds(deps: IgDeps, targetAccount?: string): Promise<Creds> {
+  const { cfg, store, accountStore } = deps;
+
+  if (accountStore) {
+    if (targetAccount) {
+      const acc = await accountStore.getAccount(targetAccount);
+      if (!acc) {
+        throw new IgConfigError(`Instagram account "${targetAccount}" not found in database. Connect it in the Admin Panel.`);
+      }
+      if (acc.token_expires_at && acc.token_expires_at * 1000 <= Date.now()) {
+        throw new IgConfigError(`Stored token for account @${acc.username} is expired. Re-authenticate or refresh it in the Admin Panel.`);
+      }
+      return { userId: acc.ig_user_id, token: acc.access_token, expiresAt: acc.token_expires_at ?? null };
+    }
+
+    // No target account specified -> try default active account
+    const def = await accountStore.getDefaultAccount();
+    if (def) {
+      if (def.token_expires_at && def.token_expires_at * 1000 <= Date.now()) {
+        throw new IgConfigError(`Stored token for active account @${def.username} is expired. Re-authenticate or refresh it in the Admin Panel.`);
+      }
+      return { userId: def.ig_user_id, token: def.access_token, expiresAt: def.token_expires_at ?? null };
+    }
+  }
+
+  // Fallback to KV and env config (single-account mode)
   let token = await store.get(K_TOKEN).catch(() => null);
   let userId = (await store.get(K_USER_ID).catch(() => null)) || cfg.igUserId || "";
   const expiresRaw = await store.get(K_EXPIRES_AT).catch(() => null);
@@ -101,17 +127,17 @@ export async function loadCreds(deps: IgDeps): Promise<Creds> {
 
   if (!token) {
     throw new IgConfigError(
-      "No Instagram token configured. Set IG_LONG_LIVED_TOKEN or POST to /api/admin/seed-token (see README_DEPLOY_VERCEL.md).",
+      "No Instagram token configured. Connect an account in the Admin Panel or set IG_LONG_LIVED_TOKEN.",
     );
   }
-  if (!userId) {
+  if (!userId || userId === "default") {
     throw new IgConfigError(
-      "No IG user id configured. Set IG_USER_ID (or include user_id when seeding).",
+      "No IG user id configured. Connect an account in the Admin Panel or set IG_USER_ID.",
     );
   }
   if (expiresAt !== null && expiresAt * 1000 <= Date.now()) {
     throw new IgConfigError(
-      "Stored Instagram token is expired. Generate a fresh long-lived token and re-seed via /api/admin/seed-token.",
+      "Stored Instagram token is expired. Refresh it in the Admin Panel or generate a fresh long-lived token.",
     );
   }
   return { userId, token, expiresAt };
@@ -178,7 +204,22 @@ interface PubCounter {
   count: number;
 }
 
-export async function checkBudget(deps: IgDeps): Promise<{ used: number; remaining: number }> {
+export async function checkBudget(deps: IgDeps, targetAccountId?: string): Promise<{ used: number; remaining: number }> {
+  if (deps.accountStore && targetAccountId) {
+    const acc = await deps.accountStore.getAccount(targetAccountId);
+    if (acc?.publish_budget) {
+      const budget = acc.publish_budget;
+      const nowSec = Date.now() / 1000;
+      if (nowSec - (budget.window_start || nowSec) < 86400 && budget.count_24h >= PUBLISH_CAP_24H) {
+        const resetInH = Math.ceil(((budget.window_start || nowSec) + 86400 - nowSec) / 3600);
+        throw new BudgetExceededError(
+          `Publish budget exhausted for @${acc.username} (${budget.count_24h}/${PUBLISH_CAP_24H} per rolling 24h safety cap). Try again in ~${resetInH}h.`,
+        );
+      }
+      return { used: budget.count_24h || 0, remaining: PUBLISH_CAP_24H - (budget.count_24h || 0) };
+    }
+  }
+
   let counter: PubCounter = { start: Date.now(), count: 0 };
   try {
     const raw = await deps.store.get(K_PUB);
@@ -199,7 +240,15 @@ export async function checkBudget(deps: IgDeps): Promise<{ used: number; remaini
   return { used: counter.count, remaining: PUBLISH_CAP_24H - counter.count };
 }
 
-export async function recordPublish(deps: IgDeps): Promise<void> {
+export async function recordPublish(deps: IgDeps, targetAccountId?: string): Promise<void> {
+  if (deps.accountStore && targetAccountId) {
+    try {
+      await deps.accountStore.incrementPublishCount(targetAccountId);
+    } catch {
+      // ignore
+    }
+  }
+
   let counter: PubCounter = { start: Date.now(), count: 0 };
   try {
     const raw = await deps.store.get(K_PUB);
@@ -212,7 +261,7 @@ export async function recordPublish(deps: IgDeps): Promise<void> {
   try {
     await deps.store.set(K_PUB, JSON.stringify(counter));
   } catch {
-    // non-fatal
+    // best-effort
   }
 }
 
