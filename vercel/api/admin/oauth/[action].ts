@@ -7,6 +7,9 @@ import { verifyPassword } from "../../../lib/oauth";
 import { createFirebaseStore } from "../../../lib/firebase";
 import {
   buildMetaAuthUrl,
+  buildInstagramDirectAuthUrl,
+  exchangeInstagramDirectCode,
+  fetchDirectInstagramAccount,
   exchangeCodeForToken,
   discoverInstagramAccounts,
   FULL_META_SCOPES,
@@ -38,9 +41,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     // 2. Mint short-lived state token (10 min TTL)
+    const mode = req.query.mode === "facebook" ? "facebook" : "instagram";
     const now = Math.floor(Date.now() / 1000);
     const state = signJwt(cfg.oauthJwtSecret, {
       sub: "meta_admin_oauth",
+      mode,
       iat: now,
       exp: now + 600,
     });
@@ -58,7 +63,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       scopeToUse = requestedScopeParam;
     }
 
-    const redirectUrl = buildMetaAuthUrl(cfg, origin, state, scopeToUse);
+    const redirectUrl =
+      mode === "facebook"
+        ? buildMetaAuthUrl(cfg, origin, state, scopeToUse)
+        : buildInstagramDirectAuthUrl(cfg, origin, state, scopeToUse);
+
     res.writeHead(302, { Location: redirectUrl });
     res.end();
     return;
@@ -90,7 +99,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
 
+    const mode = (claims as Record<string, unknown>).mode === "facebook" ? "facebook" : "instagram";
+
     try {
+      // 1. If in Instagram direct mode, exchange directly with api.instagram.com
+      if (mode === "instagram") {
+        try {
+          const directToken = await exchangeInstagramDirectCode(cfg, origin, code);
+          const directAccount = await fetchDirectInstagramAccount(directToken.access_token);
+          if (directAccount) {
+            const store = createFirebaseStore(cfg.firebaseDatabaseUrl, fetch, cfg.firebaseAuthSecret);
+            const existing = await store.listAccounts().catch(() => []);
+            const makeDefault = !existing.some((a) => a.is_default);
+
+            await store.saveAccount({
+              ig_user_id: directAccount.ig_user_id,
+              username: directAccount.username,
+              access_token: directAccount.token,
+              token_expires_at: directAccount.token_expires_at,
+              account_type: directAccount.account_type || "BUSINESS",
+              is_default: makeDefault,
+              status: "active",
+              connected_at: Date.now(),
+            });
+
+            if (makeDefault) {
+              await store.setDefaultAccount(directAccount.ig_user_id).catch(() => false);
+            }
+
+            res.writeHead(302, {
+              Location: `/admin?oauth_success=1&count=1&usernames=${encodeURIComponent(directAccount.username)}`,
+            });
+            res.end();
+            return;
+          }
+        } catch (directErr) {
+          console.warn("[meta-oauth] Direct Instagram exchange failed, attempting Facebook fallback:", directErr);
+        }
+      }
+
+      // 2. Fallback to Facebook Pages exchange & discovery
       const tokenResult = await exchangeCodeForToken(cfg, origin, code);
       const accounts = await discoverInstagramAccounts(tokenResult.access_token);
 

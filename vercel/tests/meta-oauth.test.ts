@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   buildMetaAuthUrl,
+  buildInstagramDirectAuthUrl,
+  exchangeInstagramDirectCode,
+  fetchDirectInstagramAccount,
   exchangeCodeForToken,
   discoverInstagramAccounts,
 } from "../lib/meta-oauth";
@@ -19,6 +22,51 @@ const mockCfg: Cfg = {
 };
 
 describe("Meta OAuth Flow", () => {
+  it("buildInstagramDirectAuthUrl creates a direct api.instagram.com URL", () => {
+    const urlStr = buildInstagramDirectAuthUrl(mockCfg, "https://example.com", "state-456");
+    const parsed = new URL(urlStr);
+
+    expect(parsed.origin).toBe("https://api.instagram.com");
+    expect(parsed.pathname).toBe("/oauth/authorize");
+    expect(parsed.searchParams.get("client_id")).toBe("1619333802967440");
+    expect(parsed.searchParams.get("redirect_uri")).toBe("https://example.com/api/admin/oauth/callback");
+    expect(parsed.searchParams.get("scope")).toBe("instagram_business_basic");
+    expect(parsed.searchParams.get("enable_fb_login")).toBe("false");
+  });
+
+  it("exchangeInstagramDirectCode trades code with api.instagram.com", async () => {
+    const fakeFetch = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("graph.instagram.com/access_token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "long-lived-ig-token", expires_in: 5184000 }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ access_token: "short-lived-ig-token", user_id: "1784145555" }),
+      } as Response;
+    });
+
+    const res = await exchangeInstagramDirectCode(mockCfg, "https://example.com", "code-xyz#_", fakeFetch);
+    expect(res.access_token).toBe("long-lived-ig-token");
+    expect(res.user_id).toBe("1784145555");
+    expect(res.expires_in).toBe(5184000);
+  });
+
+  it("fetchDirectInstagramAccount fetches username and id from graph.instagram.com/me", async () => {
+    const fakeFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: "1784145555", username: "direct_brand", account_type: "BUSINESS" }),
+    } as Response);
+
+    const account = await fetchDirectInstagramAccount("long-lived-ig-token", fakeFetch);
+    expect(account).not.toBeNull();
+    expect(account?.ig_user_id).toBe("1784145555");
+    expect(account?.username).toBe("direct_brand");
+    expect(account?.token).toBe("long-lived-ig-token");
+  });
+
   it("buildMetaAuthUrl creates a valid Meta authorization URL", () => {
     const urlStr = buildMetaAuthUrl(mockCfg, "https://example.com", "state-123");
     const parsed = new URL(urlStr);

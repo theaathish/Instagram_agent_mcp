@@ -28,6 +28,30 @@ export interface DiscoveredAccount {
   token_expires_at?: number;
 }
 
+export const DEFAULT_INSTAGRAM_DIRECT_SCOPES = "instagram_business_basic";
+
+export function buildInstagramDirectAuthUrl(
+  cfg: Cfg,
+  origin: string,
+  stateToken: string,
+  requestedScope?: string,
+): string {
+  if (!cfg.metaAppId) {
+    throw new Error("META_APP_ID environment variable is not configured.");
+  }
+  const redirectUri = `${origin}/api/admin/oauth/callback`;
+  const scope = requestedScope || process.env.INSTAGRAM_AUTH_SCOPES || DEFAULT_INSTAGRAM_DIRECT_SCOPES;
+  const params = new URLSearchParams({
+    client_id: cfg.metaAppId,
+    redirect_uri: redirectUri,
+    state: stateToken,
+    response_type: "code",
+    scope,
+    enable_fb_login: "false",
+  });
+  return `https://api.instagram.com/oauth/authorize?${params.toString()}`;
+}
+
 export function buildMetaAuthUrl(
   cfg: Cfg,
   origin: string,
@@ -47,6 +71,101 @@ export function buildMetaAuthUrl(
     scope,
   });
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`;
+}
+
+export async function exchangeInstagramDirectCode(
+  cfg: Cfg,
+  origin: string,
+  code: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<{ access_token: string; user_id?: string; expires_in?: number }> {
+  if (!cfg.metaAppId || !cfg.metaAppSecret) {
+    throw new Error("META_APP_ID or META_APP_SECRET is not configured.");
+  }
+  const cleanCode = code.replace(/#.*$/, "");
+  const redirectUri = `${origin}/api/admin/oauth/callback`;
+
+  const form = new URLSearchParams();
+  form.append("client_id", cfg.metaAppId);
+  form.append("client_secret", cfg.metaAppSecret);
+  form.append("grant_type", "authorization_code");
+  form.append("redirect_uri", redirectUri);
+  form.append("code", cleanCode);
+
+  const tokenRes = await fetchFn("https://api.instagram.com/oauth/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  });
+
+  if (!tokenRes.ok) {
+    const errBody = await tokenRes.text().catch(() => "");
+    throw new Error(`Instagram direct token exchange failed (${tokenRes.status}): ${errBody}`);
+  }
+
+  const tokenData = (await tokenRes.json()) as { access_token?: string; user_id?: string | number };
+  if (!tokenData.access_token) {
+    throw new Error("No access_token returned from api.instagram.com");
+  }
+
+  const shortToken = tokenData.access_token;
+  const userId = tokenData.user_id ? String(tokenData.user_id) : undefined;
+
+  // Swap short-lived token for long-lived 60-day token on graph.instagram.com
+  try {
+    const longUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${cfg.metaAppSecret}&access_token=${shortToken}`;
+    const longRes = await fetchFn(longUrl);
+    if (longRes.ok) {
+      const longData = (await longRes.json()) as { access_token?: string; expires_in?: number };
+      if (longData.access_token) {
+        return {
+          access_token: longData.access_token,
+          user_id: userId,
+          expires_in: longData.expires_in ?? 5184000,
+        };
+      }
+    }
+  } catch {
+    // fallback to short-lived token
+  }
+
+  return { access_token: shortToken, user_id: userId, expires_in: 3600 };
+}
+
+export async function fetchDirectInstagramAccount(
+  token: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<DiscoveredAccount | null> {
+  const meUrl = `https://graph.instagram.com/v22.0/me?fields=id,username,account_type&access_token=${encodeURIComponent(token)}`;
+  const meRes = await fetchFn(meUrl);
+  if (!meRes.ok) {
+    // Also try without version prefix
+    const altRes = await fetchFn(`https://graph.instagram.com/me?fields=id,username,account_type&access_token=${encodeURIComponent(token)}`);
+    if (altRes.ok) {
+      const data = (await altRes.json()) as { id?: string; username?: string; account_type?: string };
+      if (data.id && data.username) {
+        return {
+          ig_user_id: data.id,
+          username: data.username.toLowerCase(),
+          token,
+          account_type: data.account_type || "BUSINESS",
+          token_expires_at: Date.now() + 60 * 24 * 60 * 60 * 1000,
+        };
+      }
+    }
+    return null;
+  }
+  const data = (await meRes.json()) as { id?: string; username?: string; account_type?: string };
+  if (data.id && data.username) {
+    return {
+      ig_user_id: data.id,
+      username: data.username.toLowerCase(),
+      token,
+      account_type: data.account_type || "BUSINESS",
+      token_expires_at: Date.now() + 60 * 24 * 60 * 60 * 1000,
+    };
+  }
+  return null;
 }
 
 export async function exchangeCodeForToken(
