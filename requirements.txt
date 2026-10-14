@@ -1,2 +1,0 @@
-# MCP server dependency only. ig-write CLI itself is stdlib-only.
-mcp>=1,<3
