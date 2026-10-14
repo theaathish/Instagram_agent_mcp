@@ -9,6 +9,7 @@ import {
   buildMetaAuthUrl,
   exchangeCodeForToken,
   discoverInstagramAccounts,
+  FULL_META_SCOPES,
 } from "../../../lib/meta-oauth";
 import { sendJson } from "../../../lib/http";
 
@@ -44,7 +45,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       exp: now + 600,
     });
 
-    const redirectUrl = buildMetaAuthUrl(cfg, origin, state);
+    const requestedScopeParam = typeof req.query.scope === "string" ? req.query.scope : "";
+    let scopeToUse: string | undefined = undefined;
+    if (requestedScopeParam === "full") {
+      scopeToUse = FULL_META_SCOPES;
+    } else if (requestedScopeParam && requestedScopeParam !== "basic" && requestedScopeParam !== "default") {
+      scopeToUse = requestedScopeParam;
+    }
+
+    const redirectUrl = buildMetaAuthUrl(cfg, origin, state, scopeToUse);
     res.writeHead(302, { Location: redirectUrl });
     res.end();
     return;

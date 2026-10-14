@@ -30,6 +30,10 @@ describe("Meta OAuth Flow", () => {
     expect(parsed.searchParams.get("state")).toBe("state-123");
     expect(parsed.searchParams.get("response_type")).toBe("code");
     expect(parsed.searchParams.get("scope")).toContain("instagram_basic");
+    expect(parsed.searchParams.get("scope")).not.toContain("instagram_content_publish");
+
+    const fullUrl = buildMetaAuthUrl(mockCfg, "https://example.com", "state-123", "full");
+    expect(new URL(fullUrl).searchParams.get("scope")).toBe("full");
   });
 
   it("buildMetaAuthUrl throws if metaAppId is not configured", () => {

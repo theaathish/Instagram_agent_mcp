@@ -4,7 +4,13 @@
 
 import type { Cfg } from "./env";
 
-export const META_AUTH_SCOPES = [
+export const DEFAULT_META_SCOPES = [
+  "instagram_basic",
+  "pages_show_list",
+  "pages_read_engagement",
+].join(",");
+
+export const FULL_META_SCOPES = [
   "instagram_basic",
   "instagram_content_publish",
   "pages_show_list",
@@ -22,17 +28,23 @@ export interface DiscoveredAccount {
   token_expires_at?: number;
 }
 
-export function buildMetaAuthUrl(cfg: Cfg, origin: string, stateToken: string): string {
+export function buildMetaAuthUrl(
+  cfg: Cfg,
+  origin: string,
+  stateToken: string,
+  requestedScope?: string,
+): string {
   if (!cfg.metaAppId) {
     throw new Error("META_APP_ID environment variable is not configured.");
   }
   const redirectUri = `${origin}/api/admin/oauth/callback`;
+  const scope = requestedScope || process.env.META_AUTH_SCOPES || DEFAULT_META_SCOPES;
   const params = new URLSearchParams({
     client_id: cfg.metaAppId,
     redirect_uri: redirectUri,
     state: stateToken,
     response_type: "code",
-    scope: META_AUTH_SCOPES,
+    scope,
   });
   return `https://www.facebook.com/v22.0/dialog/oauth?${params.toString()}`;
 }
