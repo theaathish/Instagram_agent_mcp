@@ -18,6 +18,8 @@ export interface Cfg {
   publicImageBaseUrl?: string;
   firebaseDatabaseUrl?: string;
   firebaseAuthSecret?: string;
+  metaAppId?: string;
+  metaAppSecret?: string;
 }
 
 function req(name: string): string {
@@ -40,6 +42,8 @@ export function loadCfg(): Cfg {
     publicImageBaseUrl: process.env.PUBLIC_IMAGE_BASE_URL || undefined,
     firebaseDatabaseUrl: process.env.FIREBASE_DATABASE_URL || undefined,
     firebaseAuthSecret: process.env.FIREBASE_AUTH_SECRET || undefined,
+    metaAppId: process.env.META_APP_ID || process.env.FACEBOOK_APP_ID || undefined,
+    metaAppSecret: process.env.META_APP_SECRET || process.env.FACEBOOK_APP_SECRET || undefined,
   };
 }
 

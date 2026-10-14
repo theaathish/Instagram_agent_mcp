@@ -459,8 +459,11 @@
       </div>
 
       <div class="user-actions" id="userActions">
-        <button class="btn btn-primary" id="openConnectModalBtn" style="display:none;">
-          + Connect Account
+        <button class="btn btn-primary" id="connectMetaBtn" style="display:none;background:linear-gradient(135deg, #1877F2, #00C6FF);font-weight:600;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="white" style="vertical-align:middle;margin-right:0.35rem;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>Connect with Meta
+        </button>
+        <button class="btn btn-outline" id="openConnectModalBtn" style="display:none;">
+          + Manual Token
         </button>
         <button class="btn btn-outline" id="signOutBtn" style="display:none;">Sign Out</button>
       </div>
@@ -522,12 +525,30 @@
   <div class="modal-backdrop" id="connectModal">
     <div class="modal-box">
       <h2 class="modal-title">Connect Instagram Account</h2>
-      <p class="modal-desc">Paste your Meta Long-Lived Token. The system validates the token against Meta's Graph API and stores it in your Firebase database.</p>
+      <p class="modal-desc">Connect your Instagram Professional/Business account via official Meta OAuth or by providing a long-lived access token.</p>
+
+      <div style="background:rgba(24, 119, 242, 0.08);border:1px solid rgba(24, 119, 242, 0.25);padding:1.25rem;border-radius:var(--radius-md);margin-bottom:1.5rem;text-align:center;">
+        <p style="font-size:0.875rem;margin-bottom:0.75rem;color:var(--text);font-weight:500;">
+          Fastest & Recommended: Meta OAuth Login
+        </p>
+        <button type="button" class="btn btn-primary" id="modalMetaConnectBtn" style="width:100%;background:linear-gradient(135deg, #1877F2, #00C6FF);font-weight:600;padding:0.75rem;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white" style="vertical-align:middle;margin-right:0.4rem;"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>Sign In & Connect with Meta
+        </button>
+        <div style="margin-top:0.6rem;font-size:0.75rem;color:var(--text-muted);">
+          Automatically retrieves long-lived page/business tokens and syncs to Firebase.
+        </div>
+      </div>
+
+      <div style="text-align:center;color:var(--text-muted);font-size:0.75rem;margin-bottom:1.25rem;display:flex;align-items:center;gap:0.75rem;">
+        <span style="flex:1;height:1px;background:var(--card-border);"></span>
+        <span>OR CONNECT MANUALLY</span>
+        <span style="flex:1;height:1px;background:var(--card-border);"></span>
+      </div>
 
       <form id="connectForm">
         <div class="form-group">
-          <label class="form-label" for="metaTokenInput">Meta Long-Lived User Access Token</label>
-          <input type="password" id="metaTokenInput" class="form-input" placeholder="EAA..." required />
+          <label class="form-label" for="metaTokenInput">Manual Long-Lived Token (from Graph API Explorer)</label>
+          <input type="password" id="metaTokenInput" class="form-input" placeholder="EAA..." />
         </div>
 
         <div class="form-group">
@@ -540,11 +561,16 @@
           <label class="form-label" for="isDefaultCheck" style="margin:0;cursor:pointer;">Set as Active Default Account</label>
         </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:2rem;">
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
           <button type="button" class="btn btn-outline" id="closeConnectModalBtn">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="saveAccountBtn">Verify & Link Account</button>
+          <button type="submit" class="btn btn-outline" id="saveAccountBtn">Link Manual Token</button>
         </div>
       </form>
+
+      <div style="margin-top:1.25rem;background:rgba(255,255,255,0.02);border:1px dashed var(--card-border);padding:0.6rem 0.85rem;border-radius:var(--radius-sm);font-size:0.75rem;color:var(--text-muted);display:flex;justify-content:space-between;align-items:center;">
+        <span><strong>Valid OAuth Redirect URI:</strong> <code id="redirectUriCode" style="color:var(--accent);">/api/admin/oauth/callback</code></span>
+        <button type="button" class="btn btn-outline btn-sm" id="copyRedirectBtn" style="padding:0.2rem 0.5rem;font-size:0.7rem;">Copy Full URL</button>
+      </div>
     </div>
   </div>
 
@@ -575,6 +601,7 @@
 
     const authView = document.getElementById("authView");
     const dashboardView = document.getElementById("dashboardView");
+    const connectMetaBtn = document.getElementById("connectMetaBtn");
     const openConnectModalBtn = document.getElementById("openConnectModalBtn");
     const signOutBtn = document.getElementById("signOutBtn");
     const connectModal = document.getElementById("connectModal");
@@ -593,12 +620,14 @@
       if (adminToken) {
         authView.style.display = "none";
         dashboardView.style.display = "block";
+        connectMetaBtn.style.display = "inline-flex";
         openConnectModalBtn.style.display = "inline-flex";
         signOutBtn.style.display = "inline-flex";
         loadAccounts();
       } else {
         authView.style.display = "block";
         dashboardView.style.display = "none";
+        connectMetaBtn.style.display = "none";
         openConnectModalBtn.style.display = "none";
         signOutBtn.style.display = "none";
       }
@@ -792,9 +821,48 @@
         toast(err.message, "error");
       } finally {
         saveBtn.disabled = false;
-        saveBtn.textContent = "Verify & Link Account";
+        saveBtn.textContent = "Link Manual Token";
       }
     });
+
+    function startMetaOAuth() {
+      if (!adminToken) {
+        toast("Please enter your Admin Password first.", "error");
+        return;
+      }
+      window.location.href = `/api/admin/oauth/login?admin_token=${encodeURIComponent(adminToken)}`;
+    }
+
+    connectMetaBtn.addEventListener("click", startMetaOAuth);
+    const modalMetaBtn = document.getElementById("modalMetaConnectBtn");
+    if (modalMetaBtn) modalMetaBtn.addEventListener("click", startMetaOAuth);
+
+    // Copy redirect URI
+    const redirectUrl = `${window.location.origin}/api/admin/oauth/callback`;
+    const redirectCode = document.getElementById("redirectUriCode");
+    if (redirectCode) redirectCode.textContent = redirectUrl;
+    const copyBtn = document.getElementById("copyRedirectBtn");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(redirectUrl).then(() => {
+          toast("Redirect URI copied to clipboard!");
+        }).catch(() => {
+          prompt("Copy this Redirect URI for Meta App Dashboard:", redirectUrl);
+        });
+      });
+    }
+
+    // Check URL parameters for OAuth redirect results
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get("oauth_success") === "1") {
+      const count = urlParams.get("count") || "1";
+      const usernames = urlParams.get("usernames") || "";
+      toast(`Connected ${count} Instagram account(s) via Meta! (@${usernames})`, "success");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlParams.get("oauth_error")) {
+      toast("Meta OAuth: " + decodeURIComponent(urlParams.get("oauth_error")), "error");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
 
     // Check auth on load
     checkAuth();
