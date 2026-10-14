@@ -31,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     if (accounts.length > 0) {
       let refreshedCount = 0;
-      const details: Array<{ username: string; refreshed: boolean; expires_at: number }> = [];
+      const details: Array<{ username: string; refreshed: boolean; expires_at: number; error?: string }> = [];
 
       for (const acc of accounts) {
         const expiresAt = acc.token_expires_at ? acc.token_expires_at * 1000 : 0;

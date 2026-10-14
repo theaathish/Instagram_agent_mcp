@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instagram MCP — Multi-Account Studio</title>
+  <meta name="description" content="Manage unlimited Instagram Business and Creator accounts with automated token management, MCP agent routing, and rate limits." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #09090b;
+      --card-bg: rgba(24, 24, 27, 0.7);
+      --card-border: rgba(63, 63, 70, 0.4);
+      --card-hover: rgba(39, 39, 42, 0.8);
+      --accent: #8b5cf6;
+      --accent-glow: rgba(139, 92, 246, 0.3);
+      --accent-hover: #7c3aed;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-faint: #71717a;
+      --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.15);
+      --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.15);
+      --danger: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.15);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.08) 0px, transparent 50%);
+      color: var(--text);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    header {
+      border-bottom: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      background: rgba(9, 9, 11, 0.8);
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .header-content {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .logo-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #ec4899, #8b5cf6, #3b82f6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    .logo-badge svg {
+      width: 22px;
+      height: 22px;
+      fill: white;
+    }
+
+    .logo-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      background: linear-gradient(to right, #fff, #a1a1aa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .user-actions {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+      font-family: inherit;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 2px 10px var(--accent-glow);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: var(--card-border);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-danger {
+      background: var(--danger-bg);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: var(--danger);
+    }
+    .btn-danger:hover {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-sm {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.775rem;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 2.5rem 1.5rem;
+    }
+
+    /* Auth Card View */
+    .auth-container {
+      max-width: 440px;
+      margin: 4rem auto;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      padding: 2.5rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      text-align: center;
+    }
+
+    .auth-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .auth-subtitle {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-bottom: 2rem;
+      line-height: 1.5;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 1.25rem;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 0.7rem 0.9rem;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* Dashboard Layout */
+    .dashboard-view { display: none; }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem 1.5rem;
+      backdrop-filter: blur(8px);
+    }
+
+    .stat-label {
+      font-size: 0.775rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .accounts-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 1.5rem;
+    }
+
+    .accounts-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+    }
+
+    .accounts-desc {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+    }
+
+    .accounts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .account-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      backdrop-filter: blur(8px);
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .account-card:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      background: var(--card-hover);
+      transform: translateY(-2px);
+    }
+
+    .account-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4f46e5, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .account-meta { flex: 1; min-width: 0; }
+    .account-username {
+      font-size: 1.1rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .account-id {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-faint);
+    }
+
+    .pill {
+      font-size: 0.725rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .pill-default {
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .pill-badge {
+      background: rgba(255, 255, 255, 0.07);
+      color: var(--text-muted);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .pill-warning {
+      background: var(--warning-bg);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .account-details {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: var(--radius-sm);
+      padding: 0.9rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      font-size: 0.825rem;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+    }
+    .detail-val {
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .card-footer {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+
+    .modal-box {
+      background: #18181b;
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-lg);
+      max-width: 520px;
+      width: 100%;
+      padding: 2rem;
+      position: relative;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+    }
+
+    .modal-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .modal-desc {
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.4;
+    }
+
+    .toast-box {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toast {
+      padding: 0.85rem 1.25rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.875rem;
+      color: white;
+      background: #27272a;
+      border: 1px solid var(--card-border);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      animation: slideIn 0.2s ease-out;
+    }
+    @keyframes slideIn { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    .toast-success { background: #064e3b; border-color: #059669; }
+    .toast-error { background: #7f1d1d; border-color: #dc2626; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-content">
+      <div class="logo-group">
+        <div class="logo-badge">
+          <svg viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+        </div>
+        <span class="logo-title">Instagram MCP Studio</span>
+      </div>
+
+      <div class="user-actions" id="userActions">
+        <button class="btn btn-primary" id="openConnectModalBtn" style="display:none;">
+          + Connect Account
+        </button>
+        <button class="btn btn-outline" id="signOutBtn" style="display:none;">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Authentication Card View -->
+    <div id="authView" class="auth-container">
+      <h1 class="auth-title">Admin Access</h1>
+      <p class="auth-subtitle">Sign in to manage connected Instagram business accounts, refresh tokens, and inspect publish quotas.</p>
+
+      <form id="authForm">
+        <div class="form-group">
+          <label class="form-label" for="adminSecretInput">Admin Password / Firebase Key</label>
+          <input type="password" id="adminSecretInput" class="form-input" placeholder="Enter ADMIN_PASSWORD" required />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;margin-top:0.5rem;">
+          Enter Dashboard
+        </button>
+      </form>
+    </div>
+
+    <!-- Dashboard View -->
+    <div id="dashboardView" class="dashboard-view">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Connected Accounts</div>
+          <div class="stat-value" id="statTotalAccounts">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Active Default</div>
+          <div class="stat-value" id="statDefaultAccount" style="font-size:1.25rem;line-height:2.1rem;">None</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Global 24h Cap</div>
+          <div class="stat-value" style="color:var(--success);">95 / acct</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Backend Database</div>
+          <div class="stat-value" style="font-size:1.1rem;line-height:2.1rem;color:var(--accent);">Firebase RTDB</div>
+        </div>
+      </div>
+
+      <div class="accounts-header">
+        <div>
+          <h2 class="accounts-title">Connected Accounts</h2>
+          <p class="accounts-desc">AI tools and MCP commands dynamically route to these accounts using the <code>account</code> parameter.</p>
+        </div>
+      </div>
+
+      <div class="accounts-grid" id="accountsGrid">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </main>
+
+  <!-- Connect Account Modal -->
+  <div class="modal-backdrop" id="connectModal">
+    <div class="modal-box">
+      <h2 class="modal-title">Connect Instagram Account</h2>
+      <p class="modal-desc">Paste your Meta Long-Lived Token. The system validates the token against Meta's Graph API and stores it in your Firebase database.</p>
+
+      <form id="connectForm">
+        <div class="form-group">
+          <label class="form-label" for="metaTokenInput">Meta Long-Lived User Access Token</label>
+          <input type="password" id="metaTokenInput" class="form-input" placeholder="EAA..." required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="brandStyleInput">Brand Style Guidance (Optional)</label>
+          <input type="text" id="brandStyleInput" class="form-input" placeholder="e.g. moody editorial photography, warm ambient lighting" />
+        </div>
+
+        <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.5rem;">
+          <input type="checkbox" id="isDefaultCheck" />
+          <label class="form-label" for="isDefaultCheck" style="margin:0;cursor:pointer;">Set as Active Default Account</label>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:2rem;">
+          <button type="button" class="btn btn-outline" id="closeConnectModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveAccountBtn">Verify & Link Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-box" id="toastBox"></div>
+
+  <!-- Firebase Client SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDfJepWA6RyHAjEdtj9R-NGLUsM2275srY",
+      authDomain: "insta-mcp.firebaseapp.com",
+      databaseURL: "https://insta-mcp-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "insta-mcp",
+      storageBucket: "insta-mcp.firebasestorage.app",
+      messagingSenderId: "820136583492",
+      appId: "1:820136583492:web:7a7fd300dbea5a0feb3711"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    // State
+    let adminToken = sessionStorage.getItem("insta_admin_token") || "";
+
+    const authView = document.getElementById("authView");
+    const dashboardView = document.getElementById("dashboardView");
+    const openConnectModalBtn = document.getElementById("openConnectModalBtn");
+    const signOutBtn = document.getElementById("signOutBtn");
+    const connectModal = document.getElementById("connectModal");
+    const accountsGrid = document.getElementById("accountsGrid");
+    const toastBox = document.getElementById("toastBox");
+
+    function toast(msg, type = "success") {
+      const el = document.createElement("div");
+      el.className = `toast toast-${type}`;
+      el.textContent = msg;
+      toastBox.appendChild(el);
+      setTimeout(() => el.remove(), 4000);
+    }
+
+    function checkAuth() {
+      if (adminToken) {
+        authView.style.display = "none";
+        dashboardView.style.display = "block";
+        openConnectModalBtn.style.display = "inline-flex";
+        signOutBtn.style.display = "inline-flex";
+        loadAccounts();
+      } else {
+        authView.style.display = "block";
+        dashboardView.style.display = "none";
+        openConnectModalBtn.style.display = "none";
+        signOutBtn.style.display = "none";
+      }
+    }
+
+    document.getElementById("authForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = document.getElementById("adminSecretInput").value.trim();
+      if (!val) return;
+      adminToken = val;
+      sessionStorage.setItem("insta_admin_token", val);
+      checkAuth();
+    });
+
+    signOutBtn.addEventListener("click", () => {
+      adminToken = "";
+      sessionStorage.removeItem("insta_admin_token");
+      checkAuth();
+    });
+
+    openConnectModalBtn.addEventListener("click", () => {
+      connectModal.style.display = "flex";
+    });
+
+    document.getElementById("closeConnectModalBtn").addEventListener("click", () => {
+      connectModal.style.display = "none";
+    });
+
+    async function loadAccounts() {
+      try {
+        const res = await fetch("/api/admin/accounts", {
+          headers: { "x-admin-password": adminToken }
+        });
+        if (!res.ok) {
+          if (res.status === 401) {
+            toast("Session invalid or unauthorized.", "error");
+            adminToken = "";
+            sessionStorage.removeItem("insta_admin_token");
+            checkAuth();
+            return;
+          }
+          throw new Error("Failed to load accounts");
+        }
+        const data = await res.json();
+        renderAccounts(data.accounts || []);
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    }
+
+    function renderAccounts(accounts) {
+      document.getElementById("statTotalAccounts").textContent = accounts.length;
+      const def = accounts.find(a => a.is_default);
+      document.getElementById("statDefaultAccount").textContent = def ? `@${def.username}` : (accounts[0] ? `@${accounts[0].username}` : "None");
+
+      if (accounts.length === 0) {
+        accountsGrid.innerHTML = `
+          <div style="grid-column: 1/-1; text-align: center; padding: 4rem 2rem; background: var(--card-bg); border: 1px dashed var(--card-border); border-radius: var(--radius-lg);">
+            <p style="color: var(--text-muted); margin-bottom: 1rem;">No Instagram accounts connected yet.</p>
+            <button class="btn btn-primary" onclick="document.getElementById('connectModal').style.display = 'flex';">+ Connect Your First Account</button>
+          </div>
+        `;
+        return;
+      }
+
+      accountsGrid.innerHTML = accounts.map(a => `
+        <div class="account-card" data-id="${a.ig_user_id}">
+          <div class="account-header">
+            <div class="avatar">${(a.username || "?").charAt(0).toUpperCase()}</div>
+            <div class="account-meta">
+              <div class="account-username">@${a.username}</div>
+              <div class="account-id">ID: ${a.ig_user_id}</div>
+            </div>
+            ${a.is_default ? '<span class="pill pill-default">ACTIVE</span>' : ''}
+          </div>
+
+          <div class="account-details">
+            <div class="detail-row">
+              <span>Account Type</span>
+              <span class="detail-val">${a.account_type || 'BUSINESS'}</span>
+            </div>
+            <div class="detail-row">
+              <span>Token Expiry</span>
+              <span class="detail-val" style="${a.token_expires_days !== null && a.token_expires_days < 14 ? 'color:var(--warning);' : ''}">
+                ${a.token_expires_days !== null ? `${a.token_expires_days} days remaining` : 'Permanent / Env'}
+              </span>
+            </div>
+            ${a.brand_style ? `
+            <div class="detail-row" style="flex-direction:column;gap:0.2rem;">
+              <span>Brand Style:</span>
+              <span class="detail-val" style="font-size:0.775rem;font-style:italic;">"${a.brand_style}"</span>
+            </div>
+            ` : ''}
+          </div>
+
+          <div class="card-footer">
+            ${!a.is_default ? `<button class="btn btn-outline btn-sm" onclick="setDefaultAccount('${a.ig_user_id}')">Set Default</button>` : ''}
+            <button class="btn btn-outline btn-sm" onclick="testAccount('${a.username}')">Test Connection</button>
+            <button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="deleteAccount('${a.ig_user_id}', '${a.username}')">Disconnect</button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    window.setDefaultAccount = async (id) => {
+      try {
+        const res = await fetch("/api/admin/accounts", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-password": adminToken
+          },
+          body: JSON.stringify({ active_account_id: id })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast("Default account updated.");
+          loadAccounts();
+        } else {
+          toast(data.error || "Failed to update default.", "error");
+        }
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    };
+
+    window.testAccount = async (username) => {
+      try {
+        const res = await fetch(`/api/rest/me?account=${encodeURIComponent(username)}`, {
+          headers: { "Authorization": `Bearer ${adminToken}` }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast(`Account verified: @${data.account?.username || username} is active!`);
+        } else {
+          toast(`Test failed: ${data.error}`, "error");
+        }
+      } catch (e) {
+        toast(`Test error: ${e.message}`, "error");
+      }
+    };
+
+    window.deleteAccount = async (id, username) => {
+      if (!confirm(`Are you sure you want to disconnect @${username}?`)) return;
+      try {
+        const res = await fetch(`/api/admin/accounts?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { "x-admin-password": adminToken }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast(`Disconnected @${username}.`);
+          loadAccounts();
+        } else {
+          toast(data.error || "Failed to delete.", "error");
+        }
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    };
+
+    document.getElementById("connectForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const token = document.getElementById("metaTokenInput").value.trim();
+      const brand_style = document.getElementById("brandStyleInput").value.trim();
+      const is_default = document.getElementById("isDefaultCheck").checked;
+      const saveBtn = document.getElementById("saveAccountBtn");
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Verifying with Meta...";
+
+      try {
+        const res = await fetch("/api/admin/accounts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-password": adminToken
+          },
+          body: JSON.stringify({ token, brand_style: brand_style || undefined, is_default })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast(data.message || "Account connected successfully!");
+          connectModal.style.display = "none";
+          document.getElementById("connectForm").reset();
+          loadAccounts();
+        } else {
+          toast(data.error || "Failed to link account.", "error");
+        }
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Verify & Link Account";
+      }
+    });
+
+    // Check auth on load
+    checkAuth();
+  </script>
+</body>
+</html>
