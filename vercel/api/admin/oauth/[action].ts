@@ -45,11 +45,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       exp: now + 600,
     });
 
-    const requestedScopeParam = typeof req.query.scope === "string" ? req.query.scope : "";
+    const requestedScopeParam = typeof req.query.scope === "string" ? req.query.scope.trim() : "";
     let scopeToUse: string | undefined = undefined;
     if (requestedScopeParam === "full") {
       scopeToUse = FULL_META_SCOPES;
-    } else if (requestedScopeParam && requestedScopeParam !== "basic" && requestedScopeParam !== "default") {
+    } else if (
+      requestedScopeParam &&
+      requestedScopeParam !== "basic" &&
+      requestedScopeParam !== "default" &&
+      !requestedScopeParam.includes("[object")
+    ) {
       scopeToUse = requestedScopeParam;
     }
 

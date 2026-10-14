@@ -825,17 +825,18 @@
       }
     });
 
-    function startMetaOAuth(scope = "basic") {
+    function startMetaOAuth(scope) {
       if (!adminToken) {
         toast("Please enter your Admin Password first.", "error");
         return;
       }
-      window.location.href = `/api/admin/oauth/login?admin_token=${encodeURIComponent(adminToken)}&scope=${encodeURIComponent(scope)}`;
+      const scopeVal = (typeof scope === "string" && scope.trim() && !scope.includes("[object")) ? scope.trim() : "basic";
+      window.location.href = `/api/admin/oauth/login?admin_token=${encodeURIComponent(adminToken)}&scope=${encodeURIComponent(scopeVal)}`;
     }
 
-    connectMetaBtn.addEventListener("click", startMetaOAuth);
+    connectMetaBtn.addEventListener("click", () => startMetaOAuth("basic"));
     const modalMetaBtn = document.getElementById("modalMetaConnectBtn");
-    if (modalMetaBtn) modalMetaBtn.addEventListener("click", startMetaOAuth);
+    if (modalMetaBtn) modalMetaBtn.addEventListener("click", () => startMetaOAuth("basic"));
 
     // Copy redirect URI
     const redirectUrl = `${window.location.origin}/api/admin/oauth/callback`;
