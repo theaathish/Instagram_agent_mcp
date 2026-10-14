@@ -16,6 +16,8 @@ export interface Cfg {
   apiVersion: string;
   graphBase: string;
   publicImageBaseUrl?: string;
+  firebaseDatabaseUrl?: string;
+  firebaseAuthSecret?: string;
 }
 
 function req(name: string): string {
@@ -27,7 +29,7 @@ function req(name: string): string {
 export function loadCfg(): Cfg {
   return {
     adminPassword: req("ADMIN_PASSWORD"),
-    igUserId: req("IG_USER_ID"),
+    igUserId: process.env.IG_USER_ID || "default",
     igSeedToken: process.env.IG_LONG_LIVED_TOKEN || undefined,
     brandStyle: process.env.BRAND_STYLE || undefined,
     hfToken: process.env.HF_TOKEN || undefined,
@@ -36,6 +38,8 @@ export function loadCfg(): Cfg {
     apiVersion: process.env.IG_API_VERSION || DEFAULT_API_VERSION,
     graphBase: (process.env.IG_GRAPH_BASE || DEFAULT_GRAPH_BASE).replace(/\/+$/, ""),
     publicImageBaseUrl: process.env.PUBLIC_IMAGE_BASE_URL || undefined,
+    firebaseDatabaseUrl: process.env.FIREBASE_DATABASE_URL || undefined,
+    firebaseAuthSecret: process.env.FIREBASE_AUTH_SECRET || undefined,
   };
 }
 
