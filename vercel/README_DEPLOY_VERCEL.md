@@ -9,14 +9,15 @@ Endpoints (after deploy, `https://<project>.vercel.app`):
 
 | Path | What |
 |---|---|
-| `/mcp` (→ `/api/mcp`) | MCP over Streamable HTTP, stateless (OAuth-protected) |
+| `/admin` (→ `/admin.html`) | Multi-account management dashboard (Firebase Auth/RTDB) |
+| `/mcp` (→ `/api/mcp`) | MCP over Streamable HTTP, stateless (OAuth-protected, 19 tools) |
 | `/.well-known/oauth-protected-resource` | RFC 9728 discovery for MCP clients |
 | `/.well-known/oauth-authorization-server` | RFC 8414 discovery |
 | `/api/oauth/authorize`, `/api/oauth/token`, `/api/oauth/register` | Login + token + dynamic client registration |
+| `/api/admin/accounts` | REST endpoint for account connection and management |
 | `/api/rest/*` | Minimal REST mirrors (same Bearer tokens) |
 | `/api/openapi` (alias `/api/openapi.json`) | OpenAPI 3.1 for Custom GPT Actions |
-| `/api/admin/seed-token` | One-time token seeding (admin password) |
-| `/api/cron/refresh` | Cron (every 30 days, `CRON_SECRET`-guarded) |
+| `/api/cron/refresh` | Cron (every 30 days, auto-refreshes all accounts near expiry) |
 
 ## 0. Vercel account (free)
 

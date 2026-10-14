@@ -1,139 +1,121 @@
-# Instagram_agent_mcp
+# Instagram MCP Platform — Multi-Account Studio & Server
 
-Official-API Instagram writer for humans **and** AI agents. No API key — it reuses
-[`ig-agent`](https://github.com/PixelFred0/ig-agent-cli)'s stored long-lived token.
+Enterprise-grade Model Context Protocol (MCP) server and REST API for controlling **multiple Instagram Business and Creator accounts** from AI agents (Claude, Cursor, ChatGPT). Powered by **Vercel Serverless** and **Firebase Realtime Database**.
 
-Two entry points, one logic core:
+---
 
-| File | What |
-|---|---|
-| `ig-write` | Zero-dependency Python CLI (stdlib only). Post / reel / story / carousel / delete / like |
-| `ig-mcp-server.py` | MCP stdio server wrapping `ig-write` — 11 tools for agentic mode (Claude Code, Cursor, …) |
+## Highlights
 
-## Prereqs
+* **Multi-Account Support**: Connect and command unlimited Instagram Business/Creator accounts from a single MCP endpoint. Tools accept an optional `account` parameter (`username` or `ig_user_id`), automatically falling back to your designated active default account.
+* **Modern Admin Panel (`/admin`)**: Sleek dark-mode dashboard to connect accounts, verify Meta tokens, inspect real-time token expiration, and switch default accounts.
+* **Firebase Realtime Database**: Stores connected accounts, tokens, and per-account rate limit quotas safely.
+* **Streamable HTTP MCP (`/mcp`)**: Stateless serverless endpoint with OAuth 2.1 authentication and RFC 8414 / RFC 9728 discovery for Claude Code, Cursor, and custom connectors.
+* **19 Agentic Tools**: Feed posts, reels, stories, carousels, analytics/insights, follower demographics, optimal posting times, and AI image generation.
+* **Automated Token Maintenance**: Vercel Cron runs every 30 days to auto-renew 60-day Meta tokens before they reach expiration.
+* **Safety First**: All publishing actions default to `dry_run=true` to preview actions safely; rate limits are capped at 95 posts per rolling 24-hour window per account.
 
-- Python 3.10+
-- An Instagram **Business/Creator** account connected via `ig-agent`:
-  ```bash
-  npm install -g ig-agent
-  ig-agent auth login     # or: ig-agent auth exchange --redirect-uri ... --code ...
-  ig-agent auth status    # check granted scopes
-  ```
-- For MCP mode: `pip install -r requirements.txt`
-
-## Scopes
-
-| Action | Scope |
-|---|---|
-| post / reel / story / carousel | `instagram_business_content_publish` |
-| like / unlike | `instagram_manage_engagement` (Apr 2026 Like API) |
-| delete | `instagram_manage_contents` (Dec 2025 Delete API) |
-
-`ig-write me` + `ig-write <cmd>` surface a clear re-auth hint when a scope is missing.
-Like/delete/unlike fail **fast without an API call** when ig-agent's recorded
-grant lacks the scope. **Notes has no official Meta API** and is intentionally
-not included.
-
-## Known limitations (Instagram Login path)
-
-- `instagram_manage_engagement` (like) and `instagram_manage_contents`
-  (delete) were observed **not granted** via Instagram Login OAuth (Apr/Dec 2026
-  APIs) — Meta's docs place Like under the Facebook-Login app path, and Delete
-  may need one too and/or app review. The tool tells you this instead of a raw
-  `subcode=33`.
-- Stories: no stickers/polls/links/music via API; expire after 24 h.
-- Reels: original audio only; `media_type` reads back as `VIDEO`
-  (`media_product_type` says `REEL`/`STORY`).
-- Media must be a **public https URL** — Meta cURLs it. Local files need
-  hosting first (e.g. `catbox.moe`). Story images: JPEG, 9:16 (1080×1920) best.
-- No scheduling, no caption edit after publish, no Notes/Likes-bulk endpoints.
-
-## CLI usage
-
-```bash
-./ig-write me
-./ig-write post --image-url https://example.com/pic.jpg --caption "hello"
-./ig-write reel --video-url https://example.com/clip.mp4 --caption "hi"
-./ig-write story --image-url https://example.com/pic.jpg
-./ig-write story --video-url https://example.com/clip.mp4
-./ig-write carousel-item --image-url https://example.com/a.jpg   # -> container id
-./ig-write carousel --children CID1,CID2 --caption "swipe"
-./ig-write publish --creation-id <container_id>
-./ig-write status --container-id <container_id>
-./ig-write delete --media-id <media_id>
-./ig-write like --media-id <id>
-./ig-write unlike --comment-id <id>
-```
-
-Media must be on a **public https URL**. Flow per command:
-create container → poll `status_code=FINISHED` → `media_publish`.
-`--container-only` stops after step 1 (container expires in 24 h).
-Limits: ~100 API publishes / rolling 24 h.
-
-## MCP (agentic mode)
-
-```bash
-pip install -r requirements.txt
-```
-
-Client config (stdio):
-
-```json
-{
-  "mcpServers": {
-    "ig-write": {
-      "command": "python3",
-      "args": ["/path/to/Instagram_agent_mcp/ig-mcp-server.py"]
-    }
-  }
-}
-```
-
-Tools: `ig_me, ig_post, ig_reel, ig_story, ig_carousel_item, ig_carousel,
-ig_publish, ig_container_status, ig_delete, ig_like, ig_unlike`.
-The token is read from your local ig-agent config — no extra login.
-
-## Remote (Vercel) — recommended
-
-A remote MCP server for Claude (custom connector) and ChatGPT lives in
-[`vercel/`](./vercel) — Node serverless functions on Vercel Hobby (free):
-
-- MCP over Streamable HTTP at `/mcp` (stateless), hand-rolled OAuth 2.1
-  single-user login (`ADMIN_PASSWORD`) + dynamic client registration
-- Same 17 tools as below (publishing + analytics + image generation);
-  every write defaults to `dry_run=true`; 95/24h publish cap
-- Vercel KV (token/OAuth state) + Vercel Blob (public image URLs) +
-  Vercel Cron (30-day token refresh); images via free Pollinations/HF
-- Minimal `/api/rest/*` + `/api/openapi.json` for Custom GPT Actions
-
-Deploy: import the repo with Root Directory `vercel`, add KV + Blob in the
-dashboard, set env vars, redeploy. Full walkthrough:
-[`vercel/README_DEPLOY_VERCEL.md`](./vercel/README_DEPLOY_VERCEL.md).
+---
 
 ## Layout
 
 ```
 Instagram_agent_mcp/
-├── ig-write           # CLI (stdlib only, executable)
-├── ig-mcp-server.py   # MCP server (needs: pip install mcp)
-├── test_ig_write.py   # stdlib unit tests (no network)
-├── requirements.txt
-├── README.md
-└── LICENSE
+├── vercel/                   # Serverless platform root (deployable to Vercel)
+│   ├── api/
+│   │   ├── admin/            # Admin API (/api/admin/accounts)
+│   │   ├── cron/             # Auto token refresh cron (/api/cron/refresh)
+│   │   ├── oauth/            # OAuth 2.1 endpoints (authorize, token, register)
+│   │   ├── rest/             # REST mirrors for Custom GPT actions
+│   │   ├── mcp.ts            # Streamable HTTP MCP server handler (/mcp)
+│   │   └── openapi.ts        # OpenAPI 3.1 specification (/api/openapi.json)
+│   ├── lib/
+│   │   ├── firebase.ts       # Firebase Realtime Database AccountStore
+│   │   ├── tools.ts          # 19 MCP tool schemas and business logic
+│   │   ├── ig.ts             # Instagram Graph API lifecycle & budget engine
+│   │   ├── images.ts         # Free AI image generation (Pollinations / HF)
+│   │   └── oauth.ts          # OAuth 2.1 server & JWT token handling
+│   ├── public/
+│   │   └── admin.html        # Interactive Admin Dashboard (/admin)
+│   ├── tests/                # Vitest test suite (51 tests)
+│   ├── package.json
+│   └── vercel.json           # Rewrites, cron, and serverless timeout settings
+├── docs/                     # Specifications and implementation plans
+└── README.md
 ```
 
-## Troubleshooting
+---
 
-| Symptom | Fix |
-|---|---|
-| `stored token expired` | `ig-agent auth refresh` (or login again) |
-| `authorised without "instagram_manage_…"` | Re-auth with that scope; see Known limitations |
-| `container … ERROR/EXPIRED` | Media URL not fetchable or wrong spec — check public URL + format |
-| `timed out waiting for container` | Large video still processing — rerun `status`, then `publish` |
-| MCP `Connection closed` on start | `pip install -r requirements.txt` (needs `mcp` v1 or v2) |
+## 19 Available MCP Tools
+
+| Category | Tools | Description |
+|---|---|---|
+| **Account Management** | `ig_list_accounts`, `ig_set_active_account`, `ig_me` | View connected accounts, change active default, verify credentials |
+| **Publishing** | `ig_post`, `ig_reel`, `ig_story`, `ig_carousel_item`, `ig_carousel`, `ig_publish`, `ig_container_status` | Photos, reels, stories, multi-slide carousels (default `dry_run=true`) |
+| **Analytics & Insights** | `ig_account_insights`, `ig_list_media`, `ig_media_insights`, `ig_audience_demographics`, `ig_best_posting_time` | Reach, views, engagement, demographics, optimal posting slots |
+| **Engagement** | `ig_get_comments`, `ig_reply_comment` | Read and reply to comments on published media |
+| **AI Generation** | `ig_generate_image`, `ig_generate_and_post` | Free image generation + direct-to-Instagram workflow |
+
+---
+
+## Quick Setup & Deployment
+
+### 1. Deploy to Vercel
+1. Import this repository in your Vercel Dashboard.
+2. Set the **Root Directory** to `vercel`.
+3. Add **KV** and **Blob** in the Vercel Storage tab (free tiers).
+
+### 2. Environment Variables
+Set the following in **Settings → Environment Variables**:
+
+| Variable | Required | Description |
+|---|---|---|
+| `ADMIN_PASSWORD` | Yes | Password for Admin Panel (`/admin`) and OAuth login |
+| `OAUTH_JWT_SECRET` | Yes | 32+ character random secret (`openssl rand -hex 32`) |
+| `CRON_SECRET` | Yes | 32+ character secret for automated token refresh |
+| `FIREBASE_DATABASE_URL` | No | Defaults to `https://insta-mcp-default-rtdb.asia-southeast1.firebasedatabase.app` |
+| `FIREBASE_AUTH_SECRET` | No | Optional Database Secret for Firebase Realtime Database rules |
+| `BRAND_STYLE` | No | Default visual style appended to AI image generation prompts |
+| `HF_TOKEN` | No | Optional Hugging Face token for FLUX.1-schnell image generation |
+
+### 3. Connect Accounts via Admin Panel
+* Open `https://<your-project>.vercel.app/admin` in your browser.
+* Enter your `ADMIN_PASSWORD` to unlock the dashboard.
+* Click **+ Connect Account** and paste your Meta Long-Lived Token (from [Meta Developer Portal](https://developers.facebook.com/apps)).
+* The platform automatically verifies the account against Meta's Graph API, extracts the username and ID, and stores it in Firebase Realtime Database.
+
+---
+
+## MCP Client Configuration
+
+Connect from Claude, Cursor, or ChatGPT:
+
+### Claude / Cursor (Streamable HTTP)
+```json
+{
+  "mcpServers": {
+    "instagram": {
+      "url": "https://<your-project>.vercel.app/mcp"
+    }
+  }
+}
+```
+
+### Example Multi-Account Prompts
+```
+# Target specific accounts
+Use ig_post to publish an image with image_url="https://..." and account="brand_official", dry_run=false.
+
+# Use default active account
+Use ig_account_insights to view performance for the last 28 days.
+
+# List all accounts
+Use ig_list_accounts to show connected Instagram accounts and token status.
+
+# Switch active default
+Use ig_set_active_account to set "my_creator_page" as default.
+```
+
+---
 
 ## Disclaimer
-
-Uses Meta's official Instagram Graph API only. Media URLs must be public;
-respect Meta's rate limits and ToS — this is for your own accounts, not for
-serving end-user generation. Tested against `graph.instagram.com v26.0`.
+Uses official Meta Instagram Graph API `v26.0` endpoints. Respects Meta rate limits and Terms of Service.
