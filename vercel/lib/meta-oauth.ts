@@ -111,10 +111,9 @@ export async function discoverInstagramAccounts(
 ): Promise<DiscoveredAccount[]> {
   const discovered: DiscoveredAccount[] = [];
 
-  // 1. Query Facebook Pages to find connected instagram_business_account
-  const pagesRes = await fetchFn(
-    `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,account_type}&access_token=${encodeURIComponent(token)}`,
-  );
+  // 1. Query Facebook Pages to find connected instagram_business_account or connected_instagram_account
+  const pagesUrl = `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,account_type},connected_instagram_account{id,username,name}&access_token=${encodeURIComponent(token)}`;
+  const pagesRes = await fetchFn(pagesUrl);
 
   if (pagesRes.ok) {
     const pagesData = (await pagesRes.json()) as {
@@ -124,39 +123,72 @@ export async function discoverInstagramAccounts(
         access_token?: string;
         instagram_business_account?: {
           id: string;
-          username: string;
+          username?: string;
           name?: string;
           account_type?: string;
+        };
+        connected_instagram_account?: {
+          id: string;
+          username?: string;
+          name?: string;
         };
       }>;
     };
 
+    console.log("[meta-oauth] /me/accounts pages count:", pagesData?.data?.length, JSON.stringify(pagesData?.data));
+
     if (Array.isArray(pagesData.data)) {
       for (const page of pagesData.data) {
-        if (page.instagram_business_account?.id && page.instagram_business_account.username) {
-          // Page tokens derived from long-lived user tokens do not expire;
-          // use page.access_token if provided, otherwise the user token.
+        const rawIg = page.instagram_business_account || page.connected_instagram_account;
+        if (rawIg?.id) {
           const effectiveToken = page.access_token || token;
-          discovered.push({
-            ig_user_id: page.instagram_business_account.id,
-            username: page.instagram_business_account.username.toLowerCase(),
-            token: effectiveToken,
-            account_type: page.instagram_business_account.account_type || "BUSINESS",
-            token_expires_at: Date.now() + 60 * 24 * 60 * 60 * 1000,
-          });
+          let username = (rawIg.username || "").toLowerCase();
+          let accountType = page.instagram_business_account?.account_type || "BUSINESS";
+
+          // If username wasn't expanded in the subquery, fetch directly from /{ig_id}
+          if (!username) {
+            try {
+              const igRes = await fetchFn(
+                `https://graph.facebook.com/v22.0/${rawIg.id}?fields=id,username,account_type&access_token=${encodeURIComponent(effectiveToken)}`,
+              );
+              if (igRes.ok) {
+                const igData = (await igRes.json()) as { id?: string; username?: string; account_type?: string };
+                if (igData.username) {
+                  username = igData.username.toLowerCase();
+                  if (igData.account_type) accountType = igData.account_type;
+                }
+              }
+            } catch (err) {
+              console.warn("[meta-oauth] Failed to fetch ig details for", rawIg.id, err);
+            }
+          }
+
+          if (username && !discovered.some((d) => d.ig_user_id === rawIg.id)) {
+            discovered.push({
+              ig_user_id: rawIg.id,
+              username,
+              token: effectiveToken,
+              account_type: accountType,
+              token_expires_at: Date.now() + 60 * 24 * 60 * 60 * 1000,
+            });
+          }
         }
       }
     }
+  } else {
+    const errText = await pagesRes.text().catch(() => "");
+    console.warn("[meta-oauth] /me/accounts error:", pagesRes.status, errText);
   }
 
-  // 2. Fallback: if no pages have an IG business account, check if token directly identifies an IG account
+  // 2. Fallback: check if token directly identifies an IG account
   if (discovered.length === 0) {
     try {
       const meRes = await fetchFn(
-        `https://graph.facebook.com/v22.0/me?fields=id,username,account_type&access_token=${encodeURIComponent(token)}`,
+        `https://graph.facebook.com/v22.0/me?fields=id,username,account_type,name&access_token=${encodeURIComponent(token)}`,
       );
       if (meRes.ok) {
         const meData = (await meRes.json()) as { id?: string; username?: string; account_type?: string };
+        console.log("[meta-oauth] /me returned:", JSON.stringify(meData));
         if (meData.id && meData.username) {
           discovered.push({
             ig_user_id: meData.id,
