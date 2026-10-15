@@ -4,6 +4,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { guardAuth, needCfg, readBody, reqOrigin, sendJson, store } from "./http";
 import type { Cfg } from "./env";
+import { makeToolCtx } from "./mcp";
 import {
   S_ig_generate_and_post,
   S_ig_generate_image,
@@ -23,7 +24,7 @@ async function authed(req: VercelRequest, res: VercelResponse): Promise<{ ctx: T
   if (!cfg) return null;
   const origin = reqOrigin(req);
   if (!(await guardAuth(req, res, cfg, origin))) return null;
-  return { ctx: { deps: { cfg, store: store() }, origin } };
+  return { ctx: makeToolCtx(cfg, store(), origin) };
 }
 
 function invalid(res: VercelResponse, issues: Array<{ message: string }>): void {
@@ -33,7 +34,8 @@ function invalid(res: VercelResponse, issues: Array<{ message: string }>): void 
 async function handleAccount(req: VercelRequest, res: VercelResponse): Promise<void> {
   const a = await authed(req, res);
   if (!a) return;
-  sendJson(res, 200, await ig_me(a.ctx, {}));
+  const account = typeof req.query.account === "string" ? req.query.account : undefined;
+  sendJson(res, 200, await ig_me(a.ctx, { account }));
 }
 
 async function handleMediaList(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -110,7 +112,7 @@ export async function handleRest(req: VercelRequest, res: VercelResponse): Promi
   const segs = restSegs(req);
   const method = (req.method || "").toUpperCase();
 
-  if (method === "GET" && (segs.length === 0 || (segs.length === 1 && segs[0] === "account"))) {
+  if (method === "GET" && (segs.length === 0 || (segs.length === 1 && (segs[0] === "account" || segs[0] === "me")))) {
     await handleAccount(req, res);
     return;
   }

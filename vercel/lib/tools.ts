@@ -281,11 +281,12 @@ async function doCreatePublish(
 export async function ig_me(ctx: ToolCtx, args?: z.infer<typeof S_ig_me>): Promise<ToolResult> {
   try {
     const g = await ensureGraph(ctx, args?.account);
+    const target = g.base.includes("instagram.com") ? "me" : g.userId;
     const account = await graphCall(
       { base: g.base, version: g.version, token: g.token, fetchFn: g.fetchFn },
       "GET",
-      "me",
-      { fields: "id,username,account_type" },
+      target,
+      { fields: "id,username,name" },
     );
     return { ok: true, account };
   } catch (e) {

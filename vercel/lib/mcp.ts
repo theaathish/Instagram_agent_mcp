@@ -83,7 +83,11 @@ export function buildMcpServer(ctx: ToolCtx): McpServer {
 }
 
 export function makeToolCtx(cfg: Cfg, store: Store, origin: string, accountStore?: AccountStore): ToolCtx {
-  const acctStore = accountStore ?? createFirebaseStore(cfg.firebaseDatabaseUrl, undefined, cfg.firebaseAuthSecret);
+  const acctStore =
+    accountStore ??
+    (cfg.firebaseDatabaseUrl
+      ? createFirebaseStore(cfg.firebaseDatabaseUrl, undefined, cfg.firebaseAuthSecret)
+      : undefined);
   return { deps: { cfg, store, accountStore: acctStore }, origin };
 }
 

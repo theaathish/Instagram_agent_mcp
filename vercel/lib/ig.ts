@@ -144,7 +144,10 @@ export async function loadCreds(deps: IgDeps, targetAccount?: string): Promise<C
 }
 
 export function makeGraphCtx(deps: IgDeps, creds: Creds): GraphCtx {
-  return { base: deps.cfg.graphBase, version: deps.cfg.apiVersion, token: creds.token, userId: creds.userId, fetchFn: deps.fetchFn };
+  const isMetaToken = creds.token.startsWith("EAA");
+  const base = isMetaToken ? "https://graph.facebook.com" : deps.cfg.graphBase;
+  const version = isMetaToken ? "v22.0" : deps.cfg.apiVersion;
+  return { base, version, token: creds.token, userId: creds.userId, fetchFn: deps.fetchFn };
 }
 
 async function gcall(
@@ -156,11 +159,32 @@ async function gcall(
   return graphCall({ base: g.base, version: g.version, token: g.token, fetchFn: g.fetchFn }, method, path, params);
 }
 
-/** GET graph.instagram.com/refresh_access_token — returns new token + expiry. */
+/** Refresh access token — handles both Meta tokens (EAA...) and Instagram tokens (IGQ...). */
 export async function refreshToken(
   deps: IgDeps,
   currentToken: string,
 ): Promise<{ token: string; expiresAt: number }> {
+  if (currentToken.startsWith("EAA") && deps.cfg.metaAppId && deps.cfg.metaAppSecret) {
+    const res = await graphCall(
+      { base: "https://graph.facebook.com", version: "v22.0", token: currentToken, fetchFn: deps.fetchFn },
+      "GET",
+      "oauth/access_token",
+      {
+        grant_type: "fb_exchange_token",
+        client_id: deps.cfg.metaAppId,
+        client_secret: deps.cfg.metaAppSecret,
+        fb_exchange_token: currentToken,
+      },
+    );
+    const token = res["access_token"];
+    if (typeof token !== "string" || !token) {
+      throw new IgApiError({ message: "ERROR: Meta token refresh returned no access_token", httpStatus: 0 });
+    }
+    const expiresIn = Number(res["expires_in"] ?? 60 * 86400);
+    const expiresAt = Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) ? expiresIn : 60 * 86400);
+    return { token, expiresAt };
+  }
+
   const res = await graphCall(
     { base: deps.cfg.graphBase, version: deps.cfg.apiVersion, token: currentToken, fetchFn: deps.fetchFn },
     "GET",
