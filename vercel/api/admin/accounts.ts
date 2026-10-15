@@ -67,46 +67,72 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const brandStyle = typeof json["brand_style"] === "string" ? json["brand_style"] : undefined;
       const makeDefault = Boolean(json["is_default"]);
 
+      const manualUserId = String(json["ig_user_id"] || json["user_id"] || "").trim();
+      const manualUsername = String(json["username"] || "").trim();
+
       if (!token) {
         sendJson(res, 400, { ok: false, error: "Missing required 'token' parameter." });
         return;
       }
 
-      let userId = "";
-      let username = "";
+      let userId = manualUserId;
+      let username = manualUsername;
       let accountType = "BUSINESS";
 
-      // 1. Query Instagram Graph API
-      try {
-        const me = await graphCall(
-          { base: cfg.graphBase, version: cfg.apiVersion, token, fetchFn: globalThis.fetch },
-          "GET",
-          "me",
-          { fields: "id,username,account_type" },
-        );
-        userId = String(me["id"] || "");
-        username = String(me["username"] || userId);
-        accountType = String(me["account_type"] || "BUSINESS");
-      } catch {
-        // 2. Fallback: try graph.facebook.com in case it's a Meta/Facebook user token
+      // 1. If not manually provided, query Instagram Graph API (graph.instagram.com)
+      if (!userId) {
         try {
-          const fbRes = await graphCall(
+          const me = await graphCall(
+            { base: "https://graph.instagram.com", version: "v22.0", token, fetchFn: globalThis.fetch },
+            "GET",
+            "me",
+            { fields: "id,username,account_type" },
+          );
+          userId = String(me["id"] || "");
+          username = String(me["username"] || userId);
+          accountType = String(me["account_type"] || "BUSINESS");
+        } catch {
+          // Not a direct Instagram token, try Meta / Facebook endpoints
+        }
+      }
+
+      // 2. Check if token is a Page Token with direct instagram_business_account
+      if (!userId) {
+        try {
+          const pageRes = await graphCall(
             { base: "https://graph.facebook.com", version: "v22.0", token, fetchFn: globalThis.fetch },
             "GET",
             "me",
-            { fields: "id,username,name" },
+            { fields: "id,name,instagram_business_account{id,username,account_type}" },
           );
-          userId = String(fbRes["id"] || "");
-          username = String(fbRes["username"] || fbRes["name"] || userId);
+          const rawIgBiz = (pageRes["instagram_business_account"] || {}) as {
+            id?: string;
+            username?: string;
+            account_type?: string;
+          };
+          if (rawIgBiz.id) {
+            userId = rawIgBiz.id;
+            username = rawIgBiz.username || username;
+            accountType = rawIgBiz.account_type || "BUSINESS";
+          }
+        } catch {
+          // Not a Page token with direct instagram_business_account
+        }
+      }
 
-          // Check if there are connected IG business accounts on managed pages
+      // 3. Fallback: check if token is a Facebook User Token with connected pages
+      if (!userId) {
+        try {
           const pagesRes = await graphCall(
             { base: "https://graph.facebook.com", version: "v22.0", token, fetchFn: globalThis.fetch },
             "GET",
             "me/accounts",
-            { fields: "id,name,instagram_business_account{id,username,account_type}" },
+            { fields: "id,name,access_token,instagram_business_account{id,username,account_type}" },
           );
           const data = (Array.isArray(pagesRes["data"]) ? pagesRes["data"] : []) as Array<{
+            id?: string;
+            name?: string;
+            access_token?: string;
             instagram_business_account?: { id?: string; username?: string; account_type?: string };
           }>;
           for (const item of data) {
@@ -118,11 +144,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             }
           }
         } catch {
-          // both endpoints exhausted
+          // Pages check failed or empty
+        }
+      }
+
+      // 4. Fallback: query Facebook User info (id, name only — username is deprecated on FB Graph API)
+      let fbUserId = "";
+      let fbUserName = "";
+      if (!userId) {
+        try {
+          const fbRes = await graphCall(
+            { base: "https://graph.facebook.com", version: "v22.0", token, fetchFn: globalThis.fetch },
+            "GET",
+            "me",
+            { fields: "id,name" },
+          );
+          fbUserId = String(fbRes["id"] || "");
+          fbUserName = String(fbRes["name"] || fbUserId);
+        } catch {
+          // Invalid token on Facebook Graph API as well
         }
       }
 
       if (!userId) {
+        if (fbUserId) {
+          sendJson(res, 400, {
+            ok: false,
+            error: `Token is valid for Facebook user "${fbUserName}" (${fbUserId}), but no Instagram Professional account is connected to a Facebook Page on this account.\n\nTo connect Instagram:\n1. Open Facebook and create a Page (e.g. "${fbUserName}").\n2. In Facebook Page Settings > Linked Accounts > Instagram, click "Connect Account" and link your Instagram profile.\n3. Then re-link your token or reconnect here.\n\n(Alternatively, if you know your Instagram numeric ID, enter it in the 'ig_user_id' field).`,
+          });
+          return;
+        }
+
         sendJson(res, 400, { ok: false, error: "Meta API did not return an account id for this token. Please check that the token is valid." });
         return;
       }
