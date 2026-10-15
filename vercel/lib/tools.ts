@@ -193,6 +193,8 @@ export async function ig_list_accounts(ctx: ToolCtx, _args?: z.infer<typeof S_ig
       const daysLeft = a.token_expires_at
         ? Math.max(0, Math.round((a.token_expires_at * 1000 - Date.now()) / (24 * 3600 * 1000)))
         : null;
+      const cap = typeof a.custom_publish_cap === "number" && a.custom_publish_cap > 0 ? a.custom_publish_cap : 95;
+      const published24h = a.publish_budget?.count_24h || 0;
       return {
         ig_user_id: a.ig_user_id,
         username: a.username,
@@ -201,6 +203,9 @@ export async function ig_list_accounts(ctx: ToolCtx, _args?: z.infer<typeof S_ig
         status: a.status ?? "active",
         token_expires_days: daysLeft,
         brand_style: a.brand_style,
+        custom_publish_cap: cap,
+        posts_published_24h: published24h,
+        publish_budget_remaining: Math.max(0, cap - published24h),
       };
     });
     return { ok: true, count: sanitized.length, accounts: sanitized };
@@ -582,8 +587,10 @@ export async function ig_generate_image(
   try {
     const aspect = (args.aspect ?? "1:1") as Aspect;
     let brandStyle = ctx.deps.cfg.brandStyle;
-    if (args.account && ctx.deps.accountStore) {
-      const acc = await ctx.deps.accountStore.getAccount(args.account);
+    if (ctx.deps.accountStore) {
+      const acc = args.account
+        ? await ctx.deps.accountStore.getAccount(args.account)
+        : await ctx.deps.accountStore.getDefaultAccount();
       if (acc?.brand_style) brandStyle = acc.brand_style;
     }
     const cfg = { ...ctx.deps.cfg, brandStyle };
@@ -601,8 +608,10 @@ export async function ig_generate_and_post(
   try {
     const aspect = (args.aspect ?? "1:1") as Aspect;
     let brandStyle = ctx.deps.cfg.brandStyle;
-    if (args.account && ctx.deps.accountStore) {
-      const acc = await ctx.deps.accountStore.getAccount(args.account);
+    if (ctx.deps.accountStore) {
+      const acc = args.account
+        ? await ctx.deps.accountStore.getAccount(args.account)
+        : await ctx.deps.accountStore.getDefaultAccount();
       if (acc?.brand_style) brandStyle = acc.brand_style;
     }
     const cfg = { ...ctx.deps.cfg, brandStyle };

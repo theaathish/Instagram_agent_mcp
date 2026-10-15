@@ -585,6 +585,34 @@
     </div>
   </div>
 
+  <!-- Edit Account Controls Modal -->
+  <div class="modal-backdrop" id="editModal">
+    <div class="modal-box">
+      <h2 class="modal-title" id="editModalTitle">Account Controls & Guardrails</h2>
+      <p class="modal-desc">Configure autonomous limits, safety budget, and AI brand persona for this account.</p>
+
+      <form id="editForm">
+        <input type="hidden" id="editAccountId" />
+        <div class="form-group">
+          <label class="form-label" for="editDailyCapInput">Daily Post Limit (Safety Budget Cap)</label>
+          <input type="number" id="editDailyCapInput" class="form-input" min="1" max="95" placeholder="e.g. 5" />
+          <span style="font-size:0.75rem;color:var(--text-muted);">Max posts AI agents can publish to this account per rolling 24 hours (default 95).</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="editBrandStyleInput">Brand Persona & Style Guardrails</label>
+          <textarea id="editBrandStyleInput" class="form-input" rows="3" placeholder="e.g. moody editorial photography, warm ambient lighting, witty tech founder tone" style="resize:vertical;"></textarea>
+          <span style="font-size:0.75rem;color:var(--text-muted);">Injected into AI image generation and exposed in ig_list_accounts for LLM prompts.</span>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
+          <button type="button" class="btn btn-outline" id="closeEditModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveEditBtn">Save Controls</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="toast-box" id="toastBox"></div>
 
   <!-- Firebase Client SDK -->
@@ -704,21 +732,33 @@
         return;
       }
 
-      accountsGrid.innerHTML = accounts.map(a => `
-        <div class="account-card" data-id="${a.ig_user_id}">
+      accountsGrid.innerHTML = accounts.map(a => {
+        const isPaused = a.status === 'paused';
+        const cap = a.custom_publish_cap || 95;
+        const count24h = a.publish_budget?.count_24h || 0;
+        const brandStyleEscaped = (a.brand_style || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+        const usernameEscaped = (a.username || '').replace(/'/g, "\\'");
+
+        return `
+        <div class="account-card" data-id="${a.ig_user_id}" style="${isPaused ? 'border-color: rgba(234, 179, 8, 0.4); background: rgba(234, 179, 8, 0.02);' : ''}">
           <div class="account-header">
-            <div class="avatar">${(a.username || "?").charAt(0).toUpperCase()}</div>
+            <div class="avatar" style="${isPaused ? 'background: #ca8a04;' : ''}">${(a.username || "?").charAt(0).toUpperCase()}</div>
             <div class="account-meta">
               <div class="account-username">@${a.username}</div>
               <div class="account-id">ID: ${a.ig_user_id}</div>
             </div>
-            ${a.is_default ? '<span class="pill pill-default">ACTIVE</span>' : ''}
+            ${a.is_default ? '<span class="pill pill-default">ACTIVE DEFAULT</span>' : ''}
+            ${isPaused ? '<span class="pill" style="background:rgba(234, 179, 8, 0.2);color:#eab308;border:1px solid rgba(234, 179, 8, 0.4);">⏸ PAUSED</span>' : '<span class="pill" style="background:rgba(34, 197, 94, 0.15);color:#22c55e;">▶ LIVE</span>'}
           </div>
 
           <div class="account-details">
             <div class="detail-row">
               <span>Account Type</span>
               <span class="detail-val">${a.account_type || 'BUSINESS'}</span>
+            </div>
+            <div class="detail-row">
+              <span>Safety Budget</span>
+              <span class="detail-val" style="font-weight:600;">${count24h} / ${cap} posts / 24h</span>
             </div>
             <div class="detail-row">
               <span>Token Expiry</span>
@@ -728,19 +768,26 @@
             </div>
             ${a.brand_style ? `
             <div class="detail-row" style="flex-direction:column;gap:0.2rem;">
-              <span>Brand Style:</span>
+              <span>Brand Persona / Style:</span>
               <span class="detail-val" style="font-size:0.775rem;font-style:italic;">"${a.brand_style}"</span>
             </div>
             ` : ''}
           </div>
 
-          <div class="card-footer">
+          <div class="card-footer" style="flex-wrap:wrap;gap:0.4rem;">
             ${!a.is_default ? `<button class="btn btn-outline btn-sm" onclick="setDefaultAccount('${a.ig_user_id}')">Set Default</button>` : ''}
-            <button class="btn btn-outline btn-sm" onclick="testAccount('${a.username}')">Test Connection</button>
+            <button class="btn btn-outline btn-sm" onclick="togglePauseAccount('${a.ig_user_id}', '${isPaused ? 'active' : 'paused'}')">
+              ${isPaused ? '▶ Resume' : '⏸ Pause'}
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="openEditModal('${a.ig_user_id}', '${usernameEscaped}', ${cap}, '${brandStyleEscaped}')">
+              ⚙️ Controls
+            </button>
+            <button class="btn btn-outline btn-sm" onclick="testAccount('${a.username}')">Test</button>
             <button class="btn btn-danger btn-sm" style="margin-left:auto;" onclick="deleteAccount('${a.ig_user_id}', '${a.username}')">Disconnect</button>
           </div>
         </div>
-      `).join("");
+      `;
+      }).join("");
     }
 
     window.setDefaultAccount = async (id) => {
@@ -799,6 +846,83 @@
         toast(e.message, "error");
       }
     };
+
+    const editModal = document.getElementById("editModal");
+    const editForm = document.getElementById("editForm");
+    const closeEditModalBtn = document.getElementById("closeEditModalBtn");
+
+    window.openEditModal = (id, username, cap, brandStyle) => {
+      document.getElementById("editModalTitle").textContent = `Controls: @${username}`;
+      document.getElementById("editAccountId").value = id;
+      document.getElementById("editDailyCapInput").value = cap || 95;
+      document.getElementById("editBrandStyleInput").value = brandStyle || "";
+      editModal.style.display = "flex";
+    };
+
+    closeEditModalBtn.addEventListener("click", () => {
+      editModal.style.display = "none";
+    });
+
+    editModal.addEventListener("click", (e) => {
+      if (e.target === editModal) editModal.style.display = "none";
+    });
+
+    window.togglePauseAccount = async (id, newStatus) => {
+      try {
+        const res = await fetch("/api/admin/accounts", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-password": adminToken
+          },
+          body: JSON.stringify({ id, status: newStatus })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast(newStatus === "paused" ? "Account PAUSED. Publishing is now blocked." : "Account RESUMED. Live publishing enabled.");
+          loadAccounts();
+        } else {
+          toast(data.error || "Failed to update status.", "error");
+        }
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    };
+
+    editForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("editAccountId").value;
+      const custom_publish_cap = Number(document.getElementById("editDailyCapInput").value) || 95;
+      const brand_style = document.getElementById("editBrandStyleInput").value.trim();
+      const saveBtn = document.getElementById("saveEditBtn");
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+
+      try {
+        const res = await fetch("/api/admin/accounts", {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-admin-password": adminToken
+          },
+          body: JSON.stringify({ id, custom_publish_cap, brand_style })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast("Account controls and brand guardrails saved!");
+          editModal.style.display = "none";
+          loadAccounts();
+        } else {
+          toast(data.error || "Failed to save controls.", "error");
+        }
+      } catch (err) {
+        toast(err.message, "error");
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save Controls";
+      }
+    });
 
     document.getElementById("connectForm").addEventListener("submit", async (e) => {
       e.preventDefault();

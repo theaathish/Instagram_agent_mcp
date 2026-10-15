@@ -12,9 +12,10 @@ export interface AccountRecord {
   brand_style?: string;
   profile_picture_url?: string;
   publish_budget?: { count_24h: number; window_start: number };
+  custom_publish_cap?: number;
   connected_at?: number;
   last_refreshed_at?: number;
-  status?: "active" | "expired" | "revoked";
+  status?: "active" | "paused" | "expired" | "revoked";
 }
 
 export interface AccountStore {
@@ -22,6 +23,7 @@ export interface AccountStore {
   getAccount(idOrUsername: string): Promise<AccountRecord | null>;
   getDefaultAccount(): Promise<AccountRecord | null>;
   saveAccount(account: AccountRecord): Promise<void>;
+  updateAccount(ig_user_id: string, updates: Partial<AccountRecord>): Promise<boolean>;
   deleteAccount(ig_user_id: string): Promise<boolean>;
   setDefaultAccount(ig_user_id: string): Promise<boolean>;
   incrementPublishCount(ig_user_id: string, nowSec?: number): Promise<number>;
@@ -110,6 +112,14 @@ export function createFirebaseStore(
         status: account.status ?? "active",
       };
       await api(`/accounts/${account.ig_user_id}`, "PUT", record);
+    },
+
+    async updateAccount(ig_user_id: string, updates: Partial<AccountRecord>): Promise<boolean> {
+      const clean = ig_user_id.replace(/^@/, "").trim().toLowerCase();
+      const existing = await this.getAccount(clean);
+      if (!existing) return false;
+      await api(`/accounts/${existing.ig_user_id}`, "PATCH", updates);
+      return true;
     },
 
     async deleteAccount(ig_user_id: string): Promise<boolean> {

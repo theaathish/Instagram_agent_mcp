@@ -34,6 +34,12 @@ function makeMockAccountStore(initialAccounts: AccountRecord[] = []): AccountSto
     async saveAccount(account: AccountRecord) {
       accounts[account.ig_user_id] = account;
     },
+    async updateAccount(id: string, updates: Partial<AccountRecord>) {
+      const match = await this.getAccount(id);
+      if (!match) return false;
+      Object.assign(accounts[match.ig_user_id], updates);
+      return true;
+    },
     async deleteAccount(id: string) {
       delete accounts[id];
       return true;

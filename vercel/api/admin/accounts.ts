@@ -53,6 +53,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           token_expires_days: daysLeft,
           status: a.status ?? "active",
           brand_style: a.brand_style,
+          custom_publish_cap: a.custom_publish_cap || 95,
           connected_at: a.connected_at,
           publish_budget: a.publish_budget,
         };
@@ -65,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const { json } = await readBody(req);
       const token = String(json["token"] || json["access_token"] || "").trim();
       const brandStyle = typeof json["brand_style"] === "string" ? json["brand_style"] : undefined;
+      const customPublishCap = typeof json["custom_publish_cap"] === "number" ? json["custom_publish_cap"] : undefined;
       const makeDefault = Boolean(json["is_default"]);
 
       const manualUserId = String(json["ig_user_id"] || json["user_id"] || "").trim();
@@ -189,6 +191,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         access_token: token,
         token_expires_at: Math.floor(Date.now() / 1000) + 60 * 86400, // 60 days standard Meta long-lived
         brand_style: brandStyle,
+        custom_publish_cap: customPublishCap,
         is_default: makeDefault || isFirst,
         status: "active",
         connected_at: Math.floor(Date.now() / 1000),
@@ -207,8 +210,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           username,
           account_type: accountType,
           is_default: record.is_default,
+          custom_publish_cap: record.custom_publish_cap,
         },
       });
+      return;
+    }
+
+    if (method === "PATCH") {
+      const { json } = await readBody(req);
+      const target = String(json["id"] || json["ig_user_id"] || json["account"] || "").trim();
+      if (!target) {
+        sendJson(res, 400, { ok: false, error: "Missing 'id' or 'account' parameter." });
+        return;
+      }
+      const updates: Partial<AccountRecord> = {};
+      if (typeof json["status"] === "string" && ["active", "paused", "expired", "revoked"].includes(json["status"])) {
+        updates.status = json["status"] as "active" | "paused" | "expired" | "revoked";
+      }
+      if (typeof json["custom_publish_cap"] === "number") {
+        updates.custom_publish_cap = Math.max(1, Math.min(100, Math.round(json["custom_publish_cap"])));
+      }
+      if (typeof json["brand_style"] === "string") {
+        updates.brand_style = json["brand_style"].trim();
+      }
+      const ok = await store.updateAccount(target, updates);
+      if (!ok) {
+        sendJson(res, 404, { ok: false, error: `Account "${target}" not found.` });
+        return;
+      }
+      sendJson(res, 200, { ok: true, message: `Account ${target} updated successfully.`, updates });
       return;
     }
 

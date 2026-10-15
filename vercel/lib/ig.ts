@@ -228,19 +228,28 @@ interface PubCounter {
   count: number;
 }
 
-export async function checkBudget(deps: IgDeps, targetAccountId?: string): Promise<{ used: number; remaining: number }> {
+export async function checkBudget(deps: IgDeps, targetAccountId?: string): Promise<{ used: number; remaining: number; cap?: number }> {
   if (deps.accountStore && targetAccountId) {
     const acc = await deps.accountStore.getAccount(targetAccountId);
-    if (acc?.publish_budget) {
-      const budget = acc.publish_budget;
-      const nowSec = Date.now() / 1000;
-      if (nowSec - (budget.window_start || nowSec) < 86400 && budget.count_24h >= PUBLISH_CAP_24H) {
-        const resetInH = Math.ceil(((budget.window_start || nowSec) + 86400 - nowSec) / 3600);
-        throw new BudgetExceededError(
-          `Publish budget exhausted for @${acc.username} (${budget.count_24h}/${PUBLISH_CAP_24H} per rolling 24h safety cap). Try again in ~${resetInH}h.`,
+    if (acc) {
+      if (acc.status === "paused") {
+        throw new IgConfigError(
+          `Account @${acc.username} is currently PAUSED in the Admin Dashboard. Unpause it to allow publishing.`,
         );
       }
-      return { used: budget.count_24h || 0, remaining: PUBLISH_CAP_24H - (budget.count_24h || 0) };
+      const cap = typeof acc.custom_publish_cap === "number" && acc.custom_publish_cap > 0 ? acc.custom_publish_cap : PUBLISH_CAP_24H;
+      const budget = acc.publish_budget;
+      if (budget) {
+        const nowSec = Date.now() / 1000;
+        if (nowSec - (budget.window_start || nowSec) < 86400 && budget.count_24h >= cap) {
+          const resetInH = Math.ceil(((budget.window_start || nowSec) + 86400 - nowSec) / 3600);
+          throw new BudgetExceededError(
+            `Publish budget exhausted for @${acc.username} (${budget.count_24h}/${cap} per rolling 24h limit). Resets in ~${resetInH}h.`,
+          );
+        }
+        return { used: budget.count_24h || 0, remaining: Math.max(0, cap - (budget.count_24h || 0)), cap };
+      }
+      return { used: 0, remaining: cap, cap };
     }
   }
 
