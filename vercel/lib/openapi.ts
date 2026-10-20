@@ -6,6 +6,13 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
     default: true,
     description: "Preview only when true/omitted; real publishing only when explicitly false.",
   };
+  const accountParam = {
+    name: "account",
+    in: "query",
+    required: false,
+    schema: { type: "string" },
+    description: "Instagram username (without @) or numeric account ID. Defaults to the active account if omitted.",
+  };
   const base = `${origin}/api/rest`;
   return {
     openapi: "3.1.0",
@@ -33,13 +40,21 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
     },
     paths: {
       "/account": {
-        get: { operationId: "getAccount", summary: "Show the active Instagram Business account.", responses: { "200": { description: "Account info" } } },
+        get: {
+          operationId: "getAccount",
+          summary: "Show the active Instagram Business account or specified target account.",
+          parameters: [accountParam],
+          responses: { "200": { description: "Account info" } },
+        },
       },
       "/media": {
         get: {
           operationId: "listMedia",
           summary: "List recent media with caption, permalink, timestamp, counts.",
-          parameters: [{ name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 50, default: 25 } }],
+          parameters: [
+            { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 50, default: 25 } },
+            accountParam,
+          ],
           responses: { "200": { description: "Media list" } },
         },
       },
@@ -47,7 +62,10 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
         get: {
           operationId: "mediaInsights",
           summary: "Per-media insights (reach, saved, shares, views, total_interactions).",
-          parameters: [{ name: "media_id", in: "query", required: true, schema: { type: "string" } }],
+          parameters: [
+            { name: "media_id", in: "query", required: true, schema: { type: "string" } },
+            accountParam,
+          ],
           responses: { "200": { description: "Insights" } },
         },
       },
@@ -84,7 +102,12 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
                 schema: {
                   type: "object",
                   required: ["image_url"],
-                  properties: { image_url: { type: "string", format: "uri" }, caption: { type: "string" }, dry_run: dryRun },
+                  properties: {
+                    image_url: { type: "string", format: "uri" },
+                    caption: { type: "string" },
+                    dry_run: dryRun,
+                    account: { type: "string", description: "Target Instagram username or numeric ID." },
+                  },
                 },
               },
             },
@@ -108,6 +131,7 @@ export function buildOpenApi(origin: string): Record<string, unknown> {
                     caption: { type: "string" },
                     aspect: { type: "string", enum: ["1:1", "4:5", "9:16"], default: "1:1" },
                     dry_run: dryRun,
+                    account: { type: "string", description: "Target Instagram username or numeric ID." },
                   },
                 },
               },

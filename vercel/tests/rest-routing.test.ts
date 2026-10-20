@@ -3,7 +3,7 @@
 // without a token, handlers fail with ok:false but routing is observable
 // via status codes.
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { handleRest } from "../lib/rest-handler";
 import { mintAccessToken } from "../lib/oauth";
 import type { Cfg } from "../lib/env";
@@ -68,4 +68,80 @@ describe("rest routing from req.url", () => {
     );
     expect(res.statusCode).toBe(401);
   });
+
+  it("/api/rest/media passes account query param to ig_list_media", async () => {
+    const tools = await import("../lib/tools");
+    const spy = vi.spyOn(tools, "ig_list_media").mockResolvedValue({ ok: true, data: [] } as never);
+    const cfg = { adminPassword: "x", igUserId: "1", oauthJwtSecret: JWT } as Cfg;
+    const at = await mintAccessToken(cfg, "https://x.vercel.app", ["ig:read", "ig:write"]);
+    const res = mockRes();
+
+    await handleRest(
+      {
+        method: "GET",
+        url: "/api/rest/media?account=17841469107971973",
+        query: { account: "17841469107971973" },
+        headers: { host: "x.vercel.app", authorization: `Bearer ${at}` },
+      } as never,
+      res as never,
+    );
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ account: "17841469107971973" }),
+    );
+    spy.mockRestore();
+  });
+
+  it("/api/rest/insights passes account query param to ig_media_insights", async () => {
+    const tools = await import("../lib/tools");
+    const spy = vi.spyOn(tools, "ig_media_insights").mockResolvedValue({ ok: true } as never);
+    const cfg = { adminPassword: "x", igUserId: "1", oauthJwtSecret: JWT } as Cfg;
+    const at = await mintAccessToken(cfg, "https://x.vercel.app", ["ig:read", "ig:write"]);
+    const res = mockRes();
+
+    const { handleMediaInsights } = await import("../lib/rest-handler");
+    await handleMediaInsights(
+      {
+        method: "GET",
+        url: "/api/rest/insights?media_id=post_99&account=thesimplekrew",
+        query: { media_id: "post_99", account: "thesimplekrew" },
+        headers: { host: "x.vercel.app", authorization: `Bearer ${at}` },
+      } as never,
+      res as never,
+      "post_99",
+    );
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ media_id: "post_99", account: "thesimplekrew" }),
+    );
+    spy.mockRestore();
+  });
+
+  it("/api/rest/post falls back to query param account if omitted in json body", async () => {
+    const tools = await import("../lib/tools");
+    const spy = vi.spyOn(tools, "ig_post").mockResolvedValue({ ok: true, dry_run: true } as never);
+    const cfg = { adminPassword: "x", igUserId: "1", oauthJwtSecret: JWT } as Cfg;
+    const at = await mintAccessToken(cfg, "https://x.vercel.app", ["ig:read", "ig:write"]);
+    const res = mockRes();
+
+    await handleRest(
+      {
+        method: "POST",
+        url: "/api/rest/post?account=print_.trek",
+        query: { account: "print_.trek" },
+        body: { image_url: "https://example.com/test.jpg" },
+        headers: { host: "x.vercel.app", authorization: `Bearer ${at}`, "content-type": "application/json" },
+      } as never,
+      res as never,
+    );
+
+    expect(spy).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ account: "print_.trek", image_url: "https://example.com/test.jpg" }),
+    );
+    spy.mockRestore();
+  });
 });
+

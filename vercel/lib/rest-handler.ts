@@ -42,7 +42,11 @@ async function handleMediaList(req: VercelRequest, res: VercelResponse): Promise
   const a = await authed(req, res);
   if (!a) return;
   const raw = req.query.limit;
-  const parsed = S_ig_list_media.safeParse({ limit: raw === undefined ? undefined : Number(Array.isArray(raw) ? raw[0] : raw) });
+  const account = typeof req.query.account === "string" ? req.query.account : undefined;
+  const parsed = S_ig_list_media.safeParse({
+    limit: raw === undefined ? undefined : Number(Array.isArray(raw) ? raw[0] : raw),
+    account,
+  });
   if (!parsed.success) {
     invalid(res, parsed.error.issues);
     return;
@@ -57,7 +61,8 @@ export async function handleMediaInsights(req: VercelRequest, res: VercelRespons
     sendJson(res, 400, { ok: false, error: "Missing media id." });
     return;
   }
-  sendJson(res, 200, await ig_media_insights(a.ctx, { media_id: mediaId }));
+  const account = typeof req.query.account === "string" ? req.query.account : undefined;
+  sendJson(res, 200, await ig_media_insights(a.ctx, { media_id: mediaId, account }));
 }
 
 async function authedPost(
@@ -71,6 +76,9 @@ async function authedPost(
     return null;
   }
   const { json } = await readBody(req);
+  if (!json.account && typeof req.query.account === "string") {
+    json.account = req.query.account;
+  }
   return { ctx: a.ctx, json };
 }
 
