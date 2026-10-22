@@ -4,6 +4,7 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { loadCfg, originOf, type Cfg } from "./env";
 import { kvStore, type Store } from "./store";
 import { bearerToken, checkAccessToken, unauthorizedChallenge, verifyPassword } from "./oauth";
+import { createFirebaseStore } from "./firebase";
 
 export function reqOrigin(req: VercelRequest): string {
   const host = (req.headers["x-forwarded-host"] as string) || (req.headers.host as string) || "localhost:3000";
@@ -59,7 +60,7 @@ export async function guardAuth(
   res: VercelResponse,
   cfg: Cfg,
   origin: string,
-): Promise<{ scope: string[] } | null> {
+): Promise<{ scope: string[]; scopedAccount?: string } | null> {
   const headerPass = req.headers["x-admin-password"] as string;
   if (headerPass && verifyPassword(headerPass, cfg.adminPassword)) {
     return { scope: ["ig:read", "ig:write", "admin"] };
@@ -74,6 +75,21 @@ export async function guardAuth(
 
   if (verifyPassword(token, cfg.adminPassword)) {
     return { scope: ["ig:read", "ig:write", "admin"] };
+  }
+
+  if (token.startsWith("ig_live_")) {
+    try {
+      const fb = createFirebaseStore(cfg.firebaseDatabaseUrl, undefined, cfg.firebaseAuthSecret);
+      const keyRec = await fb.getApiKey(token);
+      if (keyRec && keyRec.status === "active") {
+        return { scope: ["ig:read", "ig:write"], scopedAccount: keyRec.account };
+      }
+    } catch {
+      // fallback to rejection
+    }
+    const c = unauthorizedChallenge(origin);
+    sendJson(res, c.status, { ok: false, error: "Invalid or revoked API key." }, c.headers);
+    return null;
   }
 
   const ok = await checkAccessToken(cfg, origin, token);

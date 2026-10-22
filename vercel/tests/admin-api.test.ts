@@ -45,6 +45,18 @@ function makeMockAccountStore(): AccountStore & { accounts: Record<string, Accou
     async incrementPublishCount(id: string) {
       return 1;
     },
+    async listApiKeys() {
+      return [];
+    },
+    async createApiKey() {
+      throw new Error("not implemented");
+    },
+    async revokeApiKey() {
+      return true;
+    },
+    async getApiKey() {
+      return null;
+    },
   };
 }
 

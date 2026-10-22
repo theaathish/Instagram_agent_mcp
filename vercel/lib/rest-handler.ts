@@ -19,12 +19,35 @@ import {
   type ToolCtx,
 } from "./tools";
 
-async function authed(req: VercelRequest, res: VercelResponse): Promise<{ ctx: ToolCtx } | null> {
+async function authed(req: VercelRequest, res: VercelResponse): Promise<{ ctx: ToolCtx; scopedAccount?: string } | null> {
   const cfg: Cfg | null = needCfg(res);
   if (!cfg) return null;
   const origin = reqOrigin(req);
-  if (!(await guardAuth(req, res, cfg, origin))) return null;
-  return { ctx: makeToolCtx(cfg, store(), origin) };
+  const auth = await guardAuth(req, res, cfg, origin);
+  if (!auth) return null;
+  return { ctx: makeToolCtx(cfg, store(), origin), scopedAccount: auth.scopedAccount };
+}
+
+function enforceScopedAccount(
+  res: VercelResponse,
+  scopedAccount: string | undefined,
+  requestedAccount: string | undefined,
+): { account: string | undefined } | null {
+  if (!scopedAccount || scopedAccount === "*") {
+    return { account: requestedAccount };
+  }
+  const cleanScoped = scopedAccount.replace(/^@/, "").trim().toLowerCase();
+  if (requestedAccount) {
+    const cleanReq = requestedAccount.replace(/^@/, "").trim().toLowerCase();
+    if (cleanReq !== cleanScoped) {
+      sendJson(res, 403, {
+        ok: false,
+        error: `Forbidden: This API key is restricted to account @${cleanScoped}.`,
+      });
+      return null;
+    }
+  }
+  return { account: scopedAccount };
 }
 
 function invalid(res: VercelResponse, issues: Array<{ message: string }>): void {
@@ -34,18 +57,22 @@ function invalid(res: VercelResponse, issues: Array<{ message: string }>): void 
 async function handleAccount(req: VercelRequest, res: VercelResponse): Promise<void> {
   const a = await authed(req, res);
   if (!a) return;
-  const account = typeof req.query.account === "string" ? req.query.account : undefined;
-  sendJson(res, 200, await ig_me(a.ctx, { account }));
+  const requested = typeof req.query.account === "string" ? req.query.account : undefined;
+  const target = enforceScopedAccount(res, a.scopedAccount, requested);
+  if (!target) return;
+  sendJson(res, 200, await ig_me(a.ctx, { account: target.account }));
 }
 
 async function handleMediaList(req: VercelRequest, res: VercelResponse): Promise<void> {
   const a = await authed(req, res);
   if (!a) return;
+  const requested = typeof req.query.account === "string" ? req.query.account : undefined;
+  const target = enforceScopedAccount(res, a.scopedAccount, requested);
+  if (!target) return;
   const raw = req.query.limit;
-  const account = typeof req.query.account === "string" ? req.query.account : undefined;
   const parsed = S_ig_list_media.safeParse({
     limit: raw === undefined ? undefined : Number(Array.isArray(raw) ? raw[0] : raw),
-    account,
+    account: target.account,
   });
   if (!parsed.success) {
     invalid(res, parsed.error.issues);
@@ -61,8 +88,10 @@ export async function handleMediaInsights(req: VercelRequest, res: VercelRespons
     sendJson(res, 400, { ok: false, error: "Missing media id." });
     return;
   }
-  const account = typeof req.query.account === "string" ? req.query.account : undefined;
-  sendJson(res, 200, await ig_media_insights(a.ctx, { media_id: mediaId, account }));
+  const requested = typeof req.query.account === "string" ? req.query.account : undefined;
+  const target = enforceScopedAccount(res, a.scopedAccount, requested);
+  if (!target) return;
+  sendJson(res, 200, await ig_media_insights(a.ctx, { media_id: mediaId, account: target.account }));
 }
 
 async function authedPost(
@@ -76,8 +105,11 @@ async function authedPost(
     return null;
   }
   const { json } = await readBody(req);
-  if (!json.account && typeof req.query.account === "string") {
-    json.account = req.query.account;
+  const requested = typeof json.account === "string" ? json.account : (typeof req.query.account === "string" ? req.query.account : undefined);
+  const target = enforceScopedAccount(res, a.scopedAccount, requested);
+  if (!target) return null;
+  if (target.account) {
+    json.account = target.account;
   }
   return { ctx: a.ctx, json };
 }

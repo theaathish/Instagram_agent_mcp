@@ -6,6 +6,7 @@
     "api/rest/insights.ts": { "maxDuration": 60 },
     "api/oauth/[action].ts": { "maxDuration": 60 },
     "api/admin/accounts.ts": { "maxDuration": 60 },
+    "api/admin/keys.ts": { "maxDuration": 60 },
     "api/admin/oauth/[action].ts": { "maxDuration": 60 }
   },
   "crons": [{ "path": "/api/cron/refresh", "schedule": "0 8 */30 * *" }],

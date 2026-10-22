@@ -18,6 +18,16 @@ export interface AccountRecord {
   status?: "active" | "paused" | "expired" | "revoked";
 }
 
+export interface ApiKeyRecord {
+  id: string;
+  key: string;
+  name: string;
+  account?: string;
+  created_at: number;
+  last_used_at?: number;
+  status: "active" | "revoked";
+}
+
 export interface AccountStore {
   listAccounts(): Promise<AccountRecord[]>;
   getAccount(idOrUsername: string): Promise<AccountRecord | null>;
@@ -27,6 +37,10 @@ export interface AccountStore {
   deleteAccount(ig_user_id: string): Promise<boolean>;
   setDefaultAccount(ig_user_id: string): Promise<boolean>;
   incrementPublishCount(ig_user_id: string, nowSec?: number): Promise<number>;
+  listApiKeys(): Promise<ApiKeyRecord[]>;
+  createApiKey(name: string, account?: string): Promise<ApiKeyRecord>;
+  revokeApiKey(id: string): Promise<boolean>;
+  getApiKey(key: string): Promise<ApiKeyRecord | null>;
 }
 
 export const DEFAULT_FIREBASE_DB_URL = "https://insta-mcp-default-rtdb.asia-southeast1.firebasedatabase.app";
@@ -167,6 +181,46 @@ export function createFirebaseStore(
       });
 
       return newCount;
+    },
+
+    async listApiKeys(): Promise<ApiKeyRecord[]> {
+      const data = await api<Record<string, ApiKeyRecord>>("/api_keys");
+      if (!data || typeof data !== "object") return [];
+      return Object.values(data).filter((k): k is ApiKeyRecord => !!k && typeof k.key === "string");
+    },
+
+    async createApiKey(name: string, account?: string): Promise<ApiKeyRecord> {
+      const crypto = await import("node:crypto");
+      const randomPart = crypto.randomBytes(24).toString("base64url");
+      const id = `key_${randomPart.slice(0, 16)}`;
+      const key = `ig_live_${randomPart}`;
+      const rec: ApiKeyRecord = {
+        id,
+        key,
+        name: name.trim() || "API Key",
+        account: account?.trim() || undefined,
+        created_at: Math.floor(Date.now() / 1000),
+        status: "active",
+      };
+      await api(`/api_keys/${id}`, "PUT", rec);
+      return rec;
+    },
+
+    async revokeApiKey(id: string): Promise<boolean> {
+      const data = await api<ApiKeyRecord>(`/api_keys/${id}`);
+      if (!data) return false;
+      await api(`/api_keys/${id}`, "PATCH", { status: "revoked" });
+      return true;
+    },
+
+    async getApiKey(rawKey: string): Promise<ApiKeyRecord | null> {
+      const all = await this.listApiKeys();
+      const match = all.find((k) => k.key === rawKey && k.status === "active");
+      if (match) {
+        // Fire-and-forget last_used_at update
+        api(`/api_keys/${match.id}`, "PATCH", { last_used_at: Math.floor(Date.now() / 1000) }).catch(() => undefined);
+      }
+      return match || null;
     },
   };
 }

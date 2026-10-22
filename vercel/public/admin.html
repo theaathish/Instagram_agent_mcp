@@ -445,6 +445,41 @@
 
     .toast-success { background: #064e3b; border-color: #059669; }
     .toast-error { background: #7f1d1d; border-color: #dc2626; }
+
+    .api-key-item {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius-md);
+      padding: 1.25rem 1.5rem;
+      margin-bottom: 0.75rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      transition: all 0.2s ease;
+    }
+    .api-key-item:hover {
+      border-color: rgba(139, 92, 246, 0.4);
+      background: var(--card-hover);
+    }
+    .key-mono {
+      font-family: monospace;
+      font-size: 0.825rem;
+      background: rgba(0, 0, 0, 0.4);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      color: #38bdf8;
+      border: 1px solid rgba(56, 189, 248, 0.2);
+    }
+    .scope-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      background: rgba(139, 92, 246, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(139, 92, 246, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -516,6 +551,21 @@
       </div>
 
       <div class="accounts-grid" id="accountsGrid">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- CRM & Integration API Keys Section -->
+      <div class="accounts-header" style="margin-top:3rem;padding-top:2rem;border-top:1px solid var(--card-border);">
+        <div>
+          <h2 class="accounts-title">CRM & Integration API Keys</h2>
+          <p class="accounts-desc">Generate account-scoped API keys (<code>ig_live_...</code>) for your website, backend, or CRM without exposing your master <code>ADMIN_PASSWORD</code>.</p>
+        </div>
+        <button class="btn btn-outline" id="openApiKeyModalBtn" style="border-color:var(--accent);color:var(--accent);">
+          + Generate API Key
+        </button>
+      </div>
+
+      <div id="apiKeysContainer">
         <!-- Rendered dynamically -->
       </div>
     </div>
@@ -610,6 +660,58 @@
           <button type="submit" class="btn btn-primary" id="saveEditBtn">Save Controls</button>
         </div>
       </form>
+  </div>
+
+  <!-- Generate API Key Modal -->
+  <div class="modal-backdrop" id="apiKeyModal">
+    <div class="modal-box">
+      <h2 class="modal-title">Generate Integration API Key</h2>
+      <p class="modal-desc">Create a secure API key for CRM, website, or backend automations without exposing your master <code>ADMIN_PASSWORD</code>.</p>
+
+      <form id="apiKeyForm">
+        <div class="form-group">
+          <label class="form-label" for="apiKeyNameInput">Integration / Key Name</label>
+          <input type="text" id="apiKeyNameInput" class="form-input" placeholder="e.g. SimpleKrew CRM Integration" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="apiKeyAccountSelect">Account Scope (Lock to Account)</label>
+          <select id="apiKeyAccountSelect" class="form-input" style="background:#27272a;cursor:pointer;">
+            <option value="">All Connected Accounts (*)</option>
+          </select>
+          <span style="font-size:0.75rem;color:var(--text-muted);display:block;margin-top:0.35rem;">If scoped to an account, this key will strictly be blocked from accessing any other accounts.</span>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:0.75rem;margin-top:1.5rem;">
+          <button type="button" class="btn btn-outline" id="closeApiKeyModalBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="saveApiKeyBtn">Generate Key</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- API Key Created Success Modal -->
+  <div class="modal-backdrop" id="createdKeyModal">
+    <div class="modal-box" style="max-width:580px;">
+      <h2 class="modal-title" style="color:var(--success);">API Key Generated!</h2>
+      <p class="modal-desc">Copy this API key now. For your security, this full token will not be displayed again.</p>
+
+      <div class="form-group">
+        <label class="form-label">Your API Key</label>
+        <div style="display:flex;gap:0.5rem;">
+          <input type="text" id="newApiKeyInput" class="form-input key-mono" readonly style="color:#4ade80;font-weight:600;" />
+          <button type="button" class="btn btn-primary" id="copyNewApiKeyBtn">Copy</button>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:1.25rem;">
+        <label class="form-label">Example CRM curl Command</label>
+        <pre id="newApiKeyCurlCode" style="background:rgba(0,0,0,0.6);padding:0.85rem;border-radius:var(--radius-sm);border:1px solid var(--card-border);font-family:monospace;font-size:0.75rem;color:#e4e4e7;overflow-x:auto;white-space:pre-wrap;"></pre>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;margin-top:1.5rem;">
+        <button type="button" class="btn btn-primary" id="closeCreatedKeyModalBtn">Done</button>
+      </div>
     </div>
   </div>
 
@@ -647,6 +749,13 @@
     const accountsGrid = document.getElementById("accountsGrid");
     const toastBox = document.getElementById("toastBox");
 
+    const apiKeyModal = document.getElementById("apiKeyModal");
+    const openApiKeyModalBtn = document.getElementById("openApiKeyModalBtn");
+    const closeApiKeyModalBtn = document.getElementById("closeApiKeyModalBtn");
+    const createdKeyModal = document.getElementById("createdKeyModal");
+    const closeCreatedKeyModalBtn = document.getElementById("closeCreatedKeyModalBtn");
+    const apiKeysContainer = document.getElementById("apiKeysContainer");
+
     function toast(msg, type = "success") {
       const el = document.createElement("div");
       el.className = `toast toast-${type}`;
@@ -663,6 +772,7 @@
         openConnectModalBtn.style.display = "inline-flex";
         signOutBtn.style.display = "inline-flex";
         loadAccounts();
+        loadApiKeys();
       } else {
         authView.style.display = "block";
         dashboardView.style.display = "none";
@@ -695,6 +805,32 @@
       connectModal.style.display = "none";
     });
 
+    if (openApiKeyModalBtn) {
+      openApiKeyModalBtn.addEventListener("click", () => {
+        apiKeyModal.style.display = "flex";
+      });
+    }
+
+    if (closeApiKeyModalBtn) {
+      closeApiKeyModalBtn.addEventListener("click", () => {
+        apiKeyModal.style.display = "none";
+      });
+    }
+
+    apiKeyModal.addEventListener("click", (e) => {
+      if (e.target === apiKeyModal) apiKeyModal.style.display = "none";
+    });
+
+    if (closeCreatedKeyModalBtn) {
+      closeCreatedKeyModalBtn.addEventListener("click", () => {
+        createdKeyModal.style.display = "none";
+      });
+    }
+
+    createdKeyModal.addEventListener("click", (e) => {
+      if (e.target === createdKeyModal) createdKeyModal.style.display = "none";
+    });
+
     async function loadAccounts() {
       try {
         const res = await fetch("/api/admin/accounts", {
@@ -721,6 +857,15 @@
       document.getElementById("statTotalAccounts").textContent = accounts.length;
       const def = accounts.find(a => a.is_default);
       document.getElementById("statDefaultAccount").textContent = def ? `@${def.username}` : (accounts[0] ? `@${accounts[0].username}` : "None");
+
+      // Update API Key modal account selector options
+      const apiKeyAccountSelect = document.getElementById("apiKeyAccountSelect");
+      if (apiKeyAccountSelect) {
+        apiKeyAccountSelect.innerHTML = `
+          <option value="">All Connected Accounts (*)</option>
+          ${accounts.map(a => `<option value="${a.username}">@${a.username} (${a.ig_user_id})</option>`).join("")}
+        `;
+      }
 
       if (accounts.length === 0) {
         accountsGrid.innerHTML = `
@@ -1006,6 +1151,171 @@
     } else if (urlParams.get("oauth_error")) {
       toast("Meta OAuth: " + decodeURIComponent(urlParams.get("oauth_error")), "error");
       window.history.replaceState({}, document.title, window.location.pathname);
+    }
+
+    async function loadApiKeys() {
+      if (!adminToken) return;
+      try {
+        const res = await fetch("/api/admin/keys", {
+          headers: { "x-admin-password": adminToken }
+        });
+        if (!res.ok) {
+          if (res.status === 401) return;
+          throw new Error("Failed to load API keys");
+        }
+        const data = await res.json();
+        renderApiKeys(data.keys || []);
+      } catch (e) {
+        console.error("API keys load error:", e);
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function renderApiKeys(keys) {
+      if (!apiKeysContainer) return;
+      if (!keys || keys.length === 0) {
+        apiKeysContainer.innerHTML = `
+          <div style="text-align: center; padding: 2.5rem 1.5rem; background: var(--card-bg); border: 1px dashed var(--card-border); border-radius: var(--radius-md);">
+            <p style="color: var(--text-muted); margin-bottom: 0.75rem; font-size: 0.875rem;">No integration API keys created yet.</p>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('apiKeyModal').style.display = 'flex';">+ Generate First Integration Key</button>
+          </div>
+        `;
+        return;
+      }
+
+      apiKeysContainer.innerHTML = keys.map(k => {
+        const dateStr = k.created_at ? new Date(k.created_at).toLocaleDateString() : 'Recently';
+        const lastUsedStr = k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'Never';
+        const isScoped = !!k.scoped_account;
+        const safeName = escapeHtml(k.name);
+        const safeAccount = escapeHtml(k.scoped_account || '');
+        const idJs = escapeHtml(k.id);
+
+        return `
+          <div class="api-key-item">
+            <div style="display:flex;flex-direction:column;gap:0.35rem;">
+              <div style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+                <strong style="font-size:0.95rem;color:var(--text);">${safeName}</strong>
+                ${isScoped 
+                  ? `<span class="scope-badge">🔒 Locked to @${safeAccount}</span>` 
+                  : `<span class="scope-badge" style="background:rgba(59,130,246,0.15);color:#60a5fa;border-color:rgba(59,130,246,0.3);">🌐 All Accounts (*)</span>`}
+              </div>
+              <div style="display:flex;align-items:center;gap:0.6rem;font-size:0.8rem;color:var(--text-muted);flex-wrap:wrap;">
+                <span>Key ID: <code class="key-mono">${escapeHtml(k.prefix || 'ig_live_')}••••${k.id ? escapeHtml(k.id.slice(-4)) : ''}</code></span>
+                <span>•</span>
+                <span>Created: ${dateStr}</span>
+                <span>•</span>
+                <span>Last used: ${lastUsedStr}</span>
+              </div>
+            </div>
+            <div>
+              <button class="btn btn-danger btn-sm" onclick="revokeApiKey('${idJs}', '${safeName.replace(/'/g, "\\'")}')">Revoke</button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    window.revokeApiKey = async (id, name) => {
+      if (!confirm(`Are you sure you want to revoke "${name}"? Any CRMs or services using this key will immediately lose access.`)) return;
+      try {
+        const res = await fetch(`/api/admin/keys?id=${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          headers: { "x-admin-password": adminToken }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          toast(`Revoked API key: ${name}`);
+          loadApiKeys();
+        } else {
+          toast(data.error || "Failed to revoke key.", "error");
+        }
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    };
+
+    const apiKeyForm = document.getElementById("apiKeyForm");
+    if (apiKeyForm) {
+      apiKeyForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const name = document.getElementById("apiKeyNameInput").value.trim();
+        const scoped_account = document.getElementById("apiKeyAccountSelect").value.trim() || undefined;
+        const saveBtn = document.getElementById("saveApiKeyBtn");
+
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Generating...";
+
+        try {
+          const res = await fetch("/api/admin/keys", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-admin-password": adminToken
+            },
+            body: JSON.stringify({ name, scoped_account })
+          });
+          const data = await res.json();
+          if (data.ok && data.key) {
+            toast("API key generated!");
+            apiKeyModal.style.display = "none";
+            apiKeyForm.reset();
+
+            const token = data.key.token;
+            const targetAccount = data.key.scoped_account;
+            document.getElementById("newApiKeyInput").value = token;
+
+            // Prepare illustrative curl command for the user
+            const origin = window.location.origin;
+            const accountQuery = targetAccount ? `?account=${encodeURIComponent(targetAccount)}` : '';
+            const curlExample = `# 1. Fetch Account Details (Read)
+curl -X GET "${origin}/api/rest/me${accountQuery}" \\
+  -H "Authorization: Bearer ${token}"
+
+# 2. Publish an Image (Write)
+curl -X POST "${origin}/api/rest/post" \\
+  -H "Authorization: Bearer ${token}" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "image_url": "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?auto=format&fit=crop&w=1080&q=80",
+    "caption": "Automated post from CRM 🚀"${targetAccount ? `,\n    "account": "${targetAccount}"` : ''}
+  }'`;
+
+            document.getElementById("newApiKeyCurlCode").textContent = curlExample;
+            createdKeyModal.style.display = "flex";
+            loadApiKeys();
+          } else {
+            toast(data.error || "Failed to generate key.", "error");
+          }
+        } catch (err) {
+          toast(err.message, "error");
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = "Generate Key";
+        }
+      });
+    }
+
+    const copyNewApiKeyBtn = document.getElementById("copyNewApiKeyBtn");
+    if (copyNewApiKeyBtn) {
+      copyNewApiKeyBtn.addEventListener("click", () => {
+        const keyVal = document.getElementById("newApiKeyInput").value;
+        if (!keyVal) return;
+        navigator.clipboard.writeText(keyVal).then(() => {
+          toast("API Key copied to clipboard!");
+        }).catch(() => {
+          prompt("Copy your API Key:", keyVal);
+        });
+      });
     }
 
     // Check auth on load

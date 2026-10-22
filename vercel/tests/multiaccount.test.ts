@@ -60,6 +60,18 @@ function makeMockAccountStore(initialAccounts: AccountRecord[] = []): AccountSto
       acc.publish_budget = { count_24h: current + 1, window_start: Date.now() / 1000 };
       return acc.publish_budget.count_24h;
     },
+    async listApiKeys() {
+      return [];
+    },
+    async createApiKey() {
+      throw new Error("not implemented");
+    },
+    async revokeApiKey() {
+      return true;
+    },
+    async getApiKey() {
+      return null;
+    },
   };
 }
 
